@@ -2,7 +2,7 @@
 Dynamic Quad Tree Composite Tiling using Redis
 
 # Dev Env
-Python and Redis (and pip install redis , pip install hiredis)
+Python3 and Redis (and pip install redis , pip install hiredis)
 
 # Tests
 ## Regist test
