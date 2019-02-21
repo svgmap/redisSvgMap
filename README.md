@@ -13,5 +13,5 @@ Python3 and Redis (and pip install redis , pip install hiredis)
 *Erase all records except gaaja*
 
 ## Web Service
-``runFlask.bat``
-Access http://localhost:5000/svgmap/
+* ``runFlask.bat``
+* Access http://localhost:5000/svgmap/
