@@ -2,7 +2,7 @@
 Dynamic Content Generator for Quad Tree Composite Tiling SVGMap using Redis
 
 # Dev Env
-Python3 and Redis (and pip3 install redis hiredis numpy pillow)
+Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 
 # Tests
 ## Regist test
