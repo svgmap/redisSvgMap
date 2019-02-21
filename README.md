@@ -14,3 +14,4 @@ Python3 and Redis (and pip install redis , pip install hiredis)
 
 ## Web Service
 ``runFlask.bat``
+Access http://localhost:5000/svgmap/
