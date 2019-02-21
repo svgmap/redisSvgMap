@@ -1,5 +1,5 @@
 # redisSvgMap
-Dynamic Quad Tree Composite Tiling using Redis
+Dynamic Content Generator for Quad Tree Composite Tiling SVGMap using Redis
 
 # Dev Env
 Python3 and Redis (and pip install redis , pip install hiredis)
