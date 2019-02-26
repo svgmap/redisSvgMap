@@ -80,7 +80,10 @@ def getMalTile(tileName="index.html"):
     else:  # PNG
       pngByteIo = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True, True)
       return send_file(pngByteIo, mimetype='image/png')
-
+  elif tileName.startswith("svgMap") and tileName.endswith(".svg"):  # root
+    csv2redis.init()
+    svgContent = csv2redis.saveSvgMapTileN(None, None, LowResImage, True)
+    return Response(svgContent, mimetype='image/svg+xml')
   else:
     return send_from_directory(SAVE_DIR, tileName)
 

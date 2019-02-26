@@ -9,6 +9,7 @@ import pickle
 # import csv2svgmap
 from PIL import Image
 import numpy as np
+import hashlib
 
 # csvを読み込み、redis上に、quadtreeのタイル番号をハッシュキーとした非等分quadtreeデータ構造を構築する
 # Programmed by Satoru Takagi
@@ -27,6 +28,7 @@ import numpy as np
 #        2019/02/07 Flask等による動的サーバとして動かせるようなライブラリ化を達成！ helloFlask.pyのほうがメインルーチンになる
 #        2019/02/19 効率化(LowResImageのときビットイメージコンテナ生成時に低解像データ読まないように)
 #  Rev11 2019/02/21 hashとして保存し、このHashCodeをベースとしたデータの削除＆QuadTreeCompositeTiligの再構築を可能にする
+#        2019/02/26 tileABCDを統合するルートSVGを作れるようにした。　その他マイナーバグフィックス
 #
 # How to use redis...
 # https://redis-py.readthedocs.io/en/latest/
@@ -66,7 +68,7 @@ topVisibleMinZoom = 4.5
 targetDir = "mapContents"  # コンテンツ出力ディレクトリ
 lowResIsBitImage = True
 
-UseHash = True
+UseRedisHash = True
 
 
 def registLrMap(lrMap, xyKey, splitedData):
@@ -130,9 +132,17 @@ def addLowResMap(targetGeoHash, lat, lng, poidata, lrMap, lat0, lng0, lats, lngs
   # poidata：split済みのメタデータ文字列　ただし０，１番目に緯度経度入り
   # lat0, lng0, lats, lngs = geoHashToLatLng(targetGeoHash)
   # print("\nbuildLowResMap: targetLatLng:", lat0, lng0, lats, lngs)
+  if lat >= 90.0:
+    lat = 89.9999999
+  if lng >= 180.0:
+    lng = 179.9999999
+
   lati = int(lowresMapSize * (lat - lat0) / lats)
   lngi = int(lowresMapSize * (lng - lng0) / lngs)
   hKey = str(lngi) + "_" + str(lati)  # x_y : 経度方向のピクセル_緯度方向のピクセル
+  if (lati >= lowresMapSize or lngi >= lowresMapSize):
+    print(lati, lngi, lat, lng, lats, lngs, lat0, lng0)
+    raise NameError('outOfRangeErr')
   # print("addLowResMap", hKey)
   registLrMap(lrMap, hKey, poidata)
 
@@ -164,7 +174,7 @@ def geoHashToLatLng(hash):
   return lat, lng, 2 * lats, 2 * lngs
 
 
-def getHashCode(lat, lng, lat0, lng0, lats, lngs):
+def getGeoHashCode(lat, lng, lat0, lng0, lats, lngs):
   la = 0
   lngs = lngs / 2
   if lng < (lng0 + lngs):
@@ -188,7 +198,7 @@ def quadPart(ans, lat0, lng0, lats, lngs):
   # 分割後にLowResMapを構築するのは、一連の全データの追加後に行うこととしてみる
   # そのかわり、データ追加に伴って影響を受けたLowResmapのhashをオンメモリに貯めることにしてみる（これはこの関数内ではなく、redisに個々のデータを追加している段階で行うこと）
   global r, overFlowKeys
-  if UseHash:
+  if UseRedisHash:
     src = list((r.hgetall(ans)).values())
   else:
     src = r.lrange(ans, 0, -1)  # 分割元のデータ
@@ -203,9 +213,9 @@ def quadPart(ans, lat0, lng0, lats, lngs):
     lng = float(poi[1])
     del poi[0:2]
     # addLowResMap(ans, lat, lng, poi, lowResMap, lat0, lng0, lats, lngs) # このタイミングで行う必要はないと思う　一連のデータ登録が完了したタイミングで行うのが良いと思う。
-    ans0, latN0, lngN0, latNs, lngNs = getHashCode(lat, lng, lat0, lng0, lats, lngs)
+    ans0, latN0, lngN0, latNs, lngNs = getGeoHashCode(lat, lng, lat0, lng0, lats, lngs)
     key = ans + ans0
-    if UseHash:
+    if UseRedisHash:
       pipe.hset(key, poidata, poidata)
     else:
       pipe.rpush(key, poidata)
@@ -289,7 +299,7 @@ def printAllLowResMap():
 def getChildData(key):
   dType = r.type(key)  # 高性能化のためexistsを排除
   if dType == b"string":  # overflowed lowResImage
-    print("child data is overflowtile ::: ", key)
+    # print("child data is overflowtile ::: ", key)
     return (pickle.loads(r.get(key)))
   elif dType == b"list":  # real data
     return (r.lrange(key, 0, -1))
@@ -437,7 +447,7 @@ def investigateKeys(registDataList, maxLevel):  # 高性能化の試行
       lng = data["lng"]
       if (keys[j] == "") or (keys[j][-1] != ":"):  # 見つかったもの":"付与はそれ以上深堀しない
 
-        ans0, lat0s[j], lng0s[j], latss[j], lngss[j] = getHashCode(lat, lng, lat0s[j], lng0s[j], latss[j], lngss[j])
+        ans0, lat0s[j], lng0s[j], latss[j], lngss[j] = getGeoHashCode(lat, lng, lat0s[j], lng0s[j], latss[j], lngss[j])
         keys[j] += ans0
         if not (keys[j] in query2redis):
           pipe.type(keys[j])
@@ -484,7 +494,7 @@ def setDataList(registDataList, keys):
   for j in range(len(keys)):
     key = keys[j]
     data = registDataList[j]["data"]
-    if UseHash:
+    if UseRedisHash:
       pipe.hset(key, data, data)
     else:
       pipe.rpush(key, data)
@@ -501,7 +511,7 @@ def checkSizes(keys):
       pass
     else:
       keyList.append(key)
-      if UseHash:
+      if UseRedisHash:
         pipe.hlen(key)
       else:
         pipe.llen(key)
@@ -597,7 +607,7 @@ def registOneData(oneData, maxLevel):
   lat0 = -180.0
   for i in range(maxLevel):
     # レベルを深めつつoverFlowしてないgeoHashタイルにストアする
-    ans0, lat0, lng0, lats, lngs = getHashCode(lat, lng, lat0, lng0, lats, lngs)
+    ans0, lat0, lng0, lats, lngs = getGeoHashCode(lat, lng, lat0, lng0, lats, lngs)
     # print(ans0,lats,lngs)
     ans += ans0
     if ans in overFlowKeys:
@@ -695,7 +705,7 @@ def delDataList(deleteDatas, geoHashKeys):
   for j in range(len(geoHashKeys)):
     geoHashKey = geoHashKeys[j]
     data = deleteDatas[j]["data"]
-    if UseHash:
+    if UseRedisHash:
       pipe.hdel(geoHashKey, data)
     else:
       pass
@@ -824,7 +834,7 @@ def saveSvgMapTile(geoHash, dtype=None):  # pythonのXML遅くて足かせにな
 
 
 def saveSvgMapTileN(
-    geoHash,  # タイルハッシュコード
+    geoHash=None,  # タイルハッシュコード
     dtype=None,  # あらかじめわかっている場合のデータタイプ(低解像タイルか実データタイル化がわかる)
     lowResImage=False,  # 低解像タイルをビットイメージにする場合
     onMemoryOutput=False,  # ライブラリとして使用し、データをオンメモリで渡す場合
@@ -834,80 +844,94 @@ def saveSvgMapTileN(
 
   global r, csvSchema, csvSchemaType
   #    print(dtype)
+
+  if geoHash == None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
+    dtype = b"string"
+    lat0 = -180
+    lng0 = -180
+    lats = 360
+    lngs = 360
+    geoHash = ""
+  else:
+    lat0, lng0, lats, lngs = geoHashToLatLng(geoHash)
+    thisZoom = len(geoHash)
+
   if dtype == None:
     dtype = r.type(geoHash)
-  thisZoom = len(geoHash)
   outStrL.append("<?xml version='1.0' encoding='UTF-8'?>\n<svg property='")
   outStrL.append(",".join(csvSchema))
   outStrL.append(
       "' viewBox='9000,-5500,10000,10000' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>\n"
   )
   outStrL.append("<globalCoordinateSystem srsName='http://purl.org/crs/84' transform='matrix(100,0,0,-100,0,0)'/>\n")
-  lat0, lng0, lats, lngs = geoHashToLatLng(geoHash)
 
   if dtype == b"string":  # そのタイルはオーバーフローしている実データがないlowRes pickleタイル
-    pixW = 100 * lngs / lowresMapSize
-    pixH = 100 * lats / lowresMapSize
-    outStrL.append("<g fill='blue' visibleMaxZoom='{:.3f}'>\n".format((topVisibleMinZoom * pow(2, thisZoom - 1))))
+    if lats < 360:  # レベル0のタイルじゃない場合はそのレベルの低解像度タイルを入れる
+      pixW = 100 * lngs / lowresMapSize
+      pixH = 100 * lats / lowresMapSize
+      outStrL.append("<g fill='blue' visibleMaxZoom='{:.3f}'>\n".format((topVisibleMinZoom * pow(2, thisZoom - 1))))
 
-    # bitImage出力 http://d.hatena.ne.jp/white_wheels/20100322/p1
-    if lowResImage:
-      if onMemoryOutput and not returnBitImage:
-        pass  # ただし、オンメモリ生成でビットイメージ要求がない場合はビットイメージ生成必要ない
+      # bitImage出力 http://d.hatena.ne.jp/white_wheels/20100322/p1
+      if lowResImage:
+        if onMemoryOutput and not returnBitImage:
+          pass  # ただし、オンメモリ生成でビットイメージ要求がない場合はビットイメージ生成必要ない
+        else:
+          bitImage = np.zeros([lowresMapSize, lowresMapSize, 4], dtype=np.uint8)
+          bitImage[:, :] = [0, 0, 0, 0]  # black totally transparent
+
+      if lowResImage and (onMemoryOutput and not returnBitImage):
+        pass  # オンメモリ生成でビットイメージ要求がない場合、しかもlowResImageの場合は低分解能コンテンツ生成の必要はない(コンテナ作るだけ)
       else:
-        bitImage = np.zeros([lowresMapSize, lowresMapSize, 4], dtype=np.uint8)
-        bitImage[:, :] = [0, 0, 0, 0]  # black totally transparent
+        thisTile = pickle.loads(r.get(geoHash))
+        # print(geoHash, "lowRes Data:len", len(thisTile), thisTile)
+        # print(geoHash, "lowRes Data:len", len(thisTile))
+        for xyKey, data in thisTile.items():
+          xy = xyKey.split("_")
+          if (len(xy) == 2):
+            x = int(xy[0])
+            y = int(xy[1])
+            # print(x,y,xyKey,data)
+            if (lowResImage):
+              yi = lowresMapSize - y - 1
+              bitImage[yi, x, 2] = 255  # blue=255
+              bitImage[yi, x, 3] = 255  # alpha=255
 
-    if lowResImage and (onMemoryOutput and not returnBitImage):
-      pass  # オンメモリ生成でビットイメージ要求がない場合、しかもlowResImageの場合は低分解能コンテンツ生成の必要はない(コンテナ作るだけ)
-    else:
-      thisTile = pickle.loads(r.get(geoHash))
-      for xyKey, data in thisTile.items():
-        xy = xyKey.split("_")
-        if (len(xy) == 2):
-          x = int(xy[0])
-          y = int(xy[1])
-          if (lowResImage):
-            yi = lowresMapSize - y - 1
-            bitImage[yi, x, 2] = 255  # blue=255
-            bitImage[yi, x, 3] = 255  # alpha=255
+            else:
+              lng = lng0 + lngs * (x / lowresMapSize)
+              lat = lat0 + lats * (y / lowresMapSize)
+              title = xyKey
+              outStrL.append(' <rect x="')
+              outStrL.append('{:.3f}'.format(100 * lng))
+              outStrL.append('" y="')
+              outStrL.append('{:.3f}'.format(-100 * lat - pixH))
+              outStrL.append('" width="')
+              outStrL.append('{:.3f}'.format(pixW))
+              outStrL.append('" height="')
+              outStrL.append('{:.3f}'.format(pixH))
+              outStrL.append('" content="totalPois:')
+              outStrL.append(str(data[len(csvSchemaType)]))
+              outStrL.append('" />\n')
 
-          else:
-            lng = lng0 + lngs * (x / lowresMapSize)
-            lat = lat0 + lats * (y / lowresMapSize)
-            title = xyKey
-            outStrL.append(' <rect x="')
-            outStrL.append('{:.3f}'.format(100 * lng))
-            outStrL.append('" y="')
-            outStrL.append('{:.3f}'.format(-100 * lat - pixH))
-            outStrL.append('" width="')
-            outStrL.append('{:.3f}'.format(pixW))
-            outStrL.append('" height="')
-            outStrL.append('{:.3f}'.format(pixH))
-            outStrL.append('" content="totalPois:')
-            outStrL.append(str(data[len(csvSchemaType)]))
-            outStrL.append('" />\n')
-
-    if (lowResImage):  # 作ったpngを参照するimageタグを作る
-      if onMemoryOutput and not returnBitImage:
-        pass  # ただし、オンメモリ生成でビットイメージ要求がない場合はビットイメージ生成必要ない
-      else:
-        img = Image.fromarray(bitImage)
-        if (returnBitImage):  # オンメモリでのビットイメージ出力要求
-          img_io = BytesIO()
-          img.save(img_io, "PNG")
-          #img = img.convert('RGB') # jpegの場合はARGB受け付けてくれない
-          #img.save(img_io, 'JPEG', quality=70)
-          img_io.seek(0)
-          return (img_io)  # ちょっと強引だがここで出力して終了
-        if not onMemoryOutput:
-          img.save(targetDir + svgFileNameHd + geoHash + ".png")
-      outStrL.append(" <image style='image-rendering:pixelated' xlink:href='")
-      outStrL.append(svgFileNameHd + geoHash + ".png")
-      outStrL.append("' x='{:.3f}".format(100 * (lng0)))
-      outStrL.append("' y='{:.3f}".format(-100 * (lat0 + lats)))
-      outStrL.append("' width='{:.3f}".format(100 * lngs))
-      outStrL.append("' height='{:.3f}'/>\n".format(100 * lats))
+      if (lowResImage):  # 作ったpngを参照するimageタグを作る
+        if onMemoryOutput and not returnBitImage:
+          pass  # ただし、オンメモリ生成でビットイメージ要求がない場合はビットイメージ生成必要ない
+        else:
+          img = Image.fromarray(bitImage)
+          if (returnBitImage):  # オンメモリでのビットイメージ出力要求
+            img_io = BytesIO()
+            img.save(img_io, "PNG")
+            #img = img.convert('RGB') # jpegの場合はARGB受け付けてくれない
+            #img.save(img_io, 'JPEG', quality=70)
+            img_io.seek(0)
+            return (img_io)  # ちょっと強引だがここで出力して終了
+          if not onMemoryOutput:
+            img.save(targetDir + svgFileNameHd + geoHash + ".png")
+        outStrL.append(" <image style='image-rendering:pixelated' xlink:href='")
+        outStrL.append(svgFileNameHd + geoHash + ".png")
+        outStrL.append("' x='{:.3f}".format(100 * (lng0)))
+        outStrL.append("' y='{:.3f}".format(-100 * (lat0 + lats)))
+        outStrL.append("' width='{:.3f}".format(100 * lngs))
+        outStrL.append("' height='{:.3f}'/>\n".format(100 * lats))
 
     pipe = r.pipeline()  # パイプ使って少し高速化できたか？
     pipe.exists(geoHash + "A")
@@ -916,7 +940,11 @@ def saveSvgMapTileN(
     pipe.exists(geoHash + "D")
     ceFlg = pipe.execute()
 
-    outStrL.append("</g>\n<g fill='blue' visibleMinZoom='{:.3f}'>\n".format((topVisibleMinZoom * pow(2, thisZoom - 1))))
+    if lats < 360:
+      outStrL.append("</g>\n<g fill='blue' visibleMinZoom='{:.3f}'>\n".format(
+          (topVisibleMinZoom * pow(2, thisZoom - 1))))
+    else:
+      outStrL.append("<g>\n")
 
     for i, exs in enumerate(ceFlg):  # link to child tiles
       cN = chr(65 + i)
@@ -953,7 +981,7 @@ def saveSvgMapTileN(
       src = r.hgetall(geoHash)
       src = list(src.values())
 
-    print(geoHash, "readData:len", len(src))
+    print(geoHash, "real Data:len", len(src))
     for poidata in src:
       poi = poidata.decode().split(',', -1)
       lat = float(poi[0])
@@ -1103,6 +1131,9 @@ def main():
   parser.add_argument("--dir")
   parser.add_argument("--lowres")
   parser.add_argument("--delete")
+  parser.add_argument("--onlysaveallmap", action='store_true')
+  parser.add_argument("--onlybuildlowres", action='store_true')
+  parser.add_argument("--debug", action='store_true')
 
   inputcsv = "./worldcitiespop_jp.csv"
   args = parser.parse_args()
@@ -1134,6 +1165,18 @@ def main():
     deleteMode = True
 
   print("rebuildFromFile:", inputcsv, "  appendFromFile:", appendcsv, " appendMode:", appendMode)
+
+  if (args.debug):
+    saveSvgMapTileN("BDDD", None, True)
+    return
+
+  if (args.onlysaveallmap):
+    saveAllSvgMap(lowResIsBitImage)
+    return
+
+  if (args.onlybuildlowres):
+    buildAllLowResMap()
+    return
 
   if (not appendMode and not deleteMode):
     print("FlushDB")

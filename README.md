@@ -20,3 +20,4 @@ Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 ### linux
 * ``runFlask.sh``
 * Access http://localhost:5000/svgmap/
+* nohup ./runFlask.sh >1.txt 2>&1 &
