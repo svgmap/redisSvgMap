@@ -1,0 +1,173 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>authoring tools tests for tiled maps</title>
+<meta charset="UTF-8">
+</head>
+
+<script>
+var redisSvgMapRoot;
+onload=function(){
+	console.log("onLoad authoring tools tests for tiled maps:", location);
+	redisSvgMapRoot = location.href.substring(0,location.href.lastIndexOf("/svgmap/"));
+	console.log("redisSvgMapRoot:", redisSvgMapRoot);
+	setTimeout(initAuthoringUI,10);
+	setTimeout(addListener,10);
+}
+
+
+function addListener(){
+	window.addEventListener('openFrame',function(e) {
+		console.log("Open airportAuthoring Iframe");
+	});
+	window.addEventListener('closeFrame',function(e) {
+		console.log("Close airportAuthoring Iframe");
+	});
+
+	window.addEventListener('appearFrame',function(e) {
+		console.log("Appear airportAuthoring Iframe");
+	});
+	window.addEventListener('hideFrame',function(e) {
+		console.log("Hide airportAuthoring Iframe");
+	});
+}
+
+
+
+var authoringToolProps;
+var timeAttr = -1;
+function initAuthoringUI(){
+	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
+	console.log(this);
+//	console.log(layerID,(svgMap.getSvgImagesProps())[layerID].metaSchema);
+	metaSchema = svgImageProps.metaSchema.split(",")
+	console.log(metaSchema);
+	for ( var i = 0 ; i < metaSchema.length ; i++ ){
+		if ( metaSchema[i].toLowerCase().indexOf("registtime:n")>=0){
+			timeAttr = i;
+		}
+	}
+	if ( timeAttr !=-1 ){
+		console.log( timeAttr,document.getElementById("meta"+timeAttr).disabled=true);
+	}
+}
+
+function getAttrs(attrs, fillTimeAttr){
+	var tf = attrs.transform;
+	tf = tf.replace("(","");
+	tf = tf.replace(")","");
+	tf = tf.split(",");
+	var lng = 0.01 * Math.floor(Number(tf[1])*10000)/10000;
+	var lat = -0.01 * Math.floor(Number(tf[2])*10000)/10000;
+	var meta = attrs.content;
+	if (timeAttr !=-1 && fillTimeAttr){
+		meta = meta.split(",");
+		if ( meta[timeAttr]==""){
+			meta[timeAttr]=new Date().getTime();
+			console.log("ADD time to timestampCol");
+		}
+		meta = meta.join(',');
+	}
+	var ans = {
+		latitude : lat,
+		longitude : lng,
+		metadata : meta
+	}
+	return ( ans );
+	
+}
+
+function editConf(eparam){
+	var originalData = null;
+	var newData = null;
+	var geoHash = null;
+	if ( eparam.prevAttrs ){
+		originalData = getAttrs(eparam.prevAttrs);
+		if ( eparam.element) {
+			geoHash = eparam.element.ownerDocument.URL;
+			geoHash = geoHash.substring(geoHash.indexOf("svgMapTile")+10);
+			geoHash = geoHash.split(".")[0];
+//			console.log("geoHash:",geoHash);
+			originalData.geoHash = geoHash;
+		}
+		
+	}
+	console.log("editConf",eparam,eparam.element);
+	if ( eparam.attrs ){
+		newData = getAttrs(eparam.attrs, true);
+		var elem = eparam.element;
+		console.log("elem:",elem);
+		elem.setAttribute("content",newData.metadata);
+	}
+	
+	
+	var qJson = {};
+	if ( eparam.confStat === "Cancel"){
+		console.log("Canceled exit");
+		return;
+	} else if ( eparam.confStat === "Delete"){
+		qJson.action = "DELETE";
+		qJson.from = originalData;
+	} else {
+		if ( originalData ){// case modify
+			qJson.action = "MODIFY";
+			qJson.from = originalData;
+			qJson.to = newData;
+		} else {
+			qJson.action = "ADD";
+			qJson.to = newData;
+		}
+	}
+	jsonStr = JSON.stringify(qJson);
+	console.log(jsonStr);
+	console.log({doc:document});
+	var postURL=redisSvgMapRoot+"/svgmap/editPoint";
+	console.log(postURL);
+	doPost(postURL,jsonStr);
+}
+
+function doPost(url, jsonStr) {
+	var xhr = new XMLHttpRequest();
+	xhr.open("POST", url);
+	xhr.setRequestHeader("Content-Type", "application/json");
+	xhr.onload = function(){
+		console.log("POST OK : ", xhr.status);
+	};
+	xhr.onerror = function(){
+		console.log("POST FAIL.... : ",xhr.status);
+	};
+	xhr.send( jsonStr );
+}
+
+var panelMode = 0;
+function changePoiPanel(){
+	if ( panelMode == 0 ){
+		console.log("assign customPOIinfoUI");
+		svgMap.setShowPoiProperty( showCustomModalPoiInfo, layerID);
+		panelMode = 1;
+	} else {
+		console.log("del customPOIinfoUI");
+		panelMode = 0;
+		svgMap.setShowPoiProperty( null, layerID);
+	}
+}
+
+function showCustomModalPoiInfo(target){
+	console.log("call showCustomModalPoiInfo",target);
+	svgMap.setCustomModal("Target Info:"+target.getAttribute("content"),"CLOSE",testModalCB,"testParam");
+}
+
+function testModalCB( index ,param ){
+	console.log("index:",index,"  param:",param);
+}
+
+</script>
+<body>
+<h2>AirportLayerAuthoringTools</h2>
+<div id="poiTools"></div>
+<h2>other tests</h2>
+<input type="button" value="test" onClick="testLibs()"/>
+<input type="button" value="changePoiPanel" onClick="changePoiPanel()"/>
+<div id="testMsg"></div>
+</body>
+</html>

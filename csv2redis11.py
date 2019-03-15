@@ -68,7 +68,7 @@ topVisibleMinZoom = 4.5
 targetDir = "mapContents"  # コンテンツ出力ディレクトリ
 lowResIsBitImage = True
 
-UseRedisHash = True
+UseRedisHash = True  # これはもはやTrue固定です　あとでFalseケースの実装を外します 2019/3/13
 
 
 def registLrMap(lrMap, xyKey, splitedData):
@@ -141,7 +141,7 @@ def addLowResMap(targetGeoHash, lat, lng, poidata, lrMap, lat0, lng0, lats, lngs
   lngi = int(lowresMapSize * (lng - lng0) / lngs)
   hKey = str(lngi) + "_" + str(lati)  # x_y : 経度方向のピクセル_緯度方向のピクセル
   if (lati >= lowresMapSize or lngi >= lowresMapSize):
-    print(lati, lngi, lat, lng, lats, lngs, lat0, lng0)
+    print(lati, lngi, lat, lng, lats, lngs, lat0, lng0, file=sys.stderr)
     raise NameError('outOfRangeErr')
   # print("addLowResMap", hKey)
   registLrMap(lrMap, hKey, poidata)
@@ -200,12 +200,14 @@ def quadPart(ans, lat0, lng0, lats, lngs):
   global r, overFlowKeys
   if UseRedisHash:
     src = list((r.hgetall(ans)).values())
+    hKeys = list((r.hgetall(ans)).keys())
   else:
     src = r.lrange(ans, 0, -1)  # 分割元のデータ
 
   #以下pipelineを使うと早くなるかな
   pipe = r.pipeline()
   # lowResMap = {}  # ここに、最大lowresMapSize^2のhashKey数で低解像度用のメッシュ型カバレッジデータ構造が構築される
+  count = 0
   for poidata in src:
     #    print ("quadPart",data.decode())
     poi = poidata.decode().split(',', -1)
@@ -216,7 +218,9 @@ def quadPart(ans, lat0, lng0, lats, lngs):
     ans0, latN0, lngN0, latNs, lngNs = getGeoHashCode(lat, lng, lat0, lng0, lats, lngs)
     key = ans + ans0
     if UseRedisHash:
-      pipe.hset(key, poidata, poidata)
+      hkey = hKeys[count]
+      pipe.hset(key, hkey, poidata)
+      count = count + 1
     else:
       pipe.rpush(key, poidata)
 
@@ -224,7 +228,7 @@ def quadPart(ans, lat0, lng0, lats, lngs):
   pipe.execute()
   # storeLowResDataToRedis(r, ans, lowResMap) ということで、
   overFlowKeys[ans] = True
-  print("\nEnd QuadPart:", ans)
+  print("\nEnd QuadPart:", ans, file=sys.stderr)
 
 
 def storeLowResDataToRedis(r, key, lowResMap):
@@ -237,13 +241,19 @@ def storeLowResDataToRedis(r, key, lowResMap):
   # childLowResMap = lowResMap
 
 
-def updateAllLowResMap(key):
+def updateAncestorsLowResMap(key):
   # 指定したLowResMap以上のものを更新する(そのポイントを子孫に持つものだけを生成しなおしなので少し早いと思う)
   # データ1個を追加した後に、そのデータの一つ上の階層のLowResMapを指定すれば、全LowResMapが更新したデータを反映したものになる
-  print("updateAllLowResMap", key)
+  print("updateAncestorsLowResMap", key, file=sys.stderr)
   for i in range(len(key)):
-    sKey = key[:-i]  # もうちょっといいループの作り方あるでしょうね・・・
-    if (i > 0):
+    if (i == 0):
+      sKey = key
+    else:
+      sKey = key[: - i]  # もうちょっといいループの作り方あるでしょうね・・・
+
+    # print("sKey:", sKey, r.type(sKey.encode()), file=sys.stderr)
+    if (r.type(sKey.encode()) == b"string"):
+      # print("update LowResMap sKey", sKey, file=sys.stderr)
       thisTile = {}
       childTiles = []
       childTiles.append(getChildData(sKey + "A"))
@@ -263,7 +273,7 @@ def buildAllLowResMap():
   for key in reversed(bkeys):  # 下のレベルから
     key = key.decode()
     if r.type(key) == b"string":  # そのタイルはオーバーフローしている実データがないタイル　実際にはpickleでバイナリ化したデータが入っているかb"OVERFLOW"がただ入ってる
-      print(key, "STR")
+      print(key, "STR", file=sys.stderr)
       thisTile = {}
       # thisTile = r.get(key)
       # if thisTile == b"OVERFLOW": # 更新ではなくて新規なのでこれは不要
@@ -280,20 +290,20 @@ def buildAllLowResMap():
       updateLowResMap(key, thisTile, childTiles)
 
     else:  # そのタイルは実データが入っている(b"list")のデータ
-      print("This is real data:", key, r.type(key))
+      print("This is real data:", key, r.type(key), file=sys.stderr)
 
 
 def printAllLowResMap():
   global r
   bkeys = r.keys("[A-D]*")
   bkeys.sort(key=len)
-  print("printAllLowResMap: Keys:", bkeys)
+  print("printAllLowResMap: Keys:", bkeys, file=sys.stderr)
 
   for key in reversed(bkeys):
     key = key.decode()
     if r.type(key) == b"string":  # そのタイルはオーバーフローしている実データがないタイル　実際にはpickleでバイナリ化したデータが入っているかb"OVERFLOW"がただ入ってる
       thisTile = pickle.loads(r.get(key))
-      print("Key:", key, thisTile)
+      print("Key:", key, thisTile, file=sys.stderr)
 
 
 def getChildData(key):
@@ -324,7 +334,7 @@ def updateLowResMap(geoHash, lowResMap, childTiles):
   # geoHash: そのlowResMapのgeoHashタイル番号
   # lowResMap: その階層のLowResMap
   # childTilsDatas: その階層の１段下の子供( 0..3 : A,B,C,D) lowResMapの場合もあるし、実データの場合もある
-  print("len:childTiles:", len(childTiles))
+  # print("updateLowResMap : len:childTiles:", len(childTiles), file=sys.stderr)
   for i, childTile in enumerate(childTiles):
     if (childTile):
       if "total" in childTile:  # childもloweResMap
@@ -351,11 +361,11 @@ def updateLowResMap(geoHash, lowResMap, childTiles):
         lat0, lng0, lats, lngs = geoHashToLatLng(geoHash)  # debug geoHash: childじゃないのが正しいぞ 2019.1.8
         updateLowResMapData(lowResMap, childTile, lat0, lng0, lats, lngs)
 
-  print("set lowResData: ", geoHash)
+  print("updateLowResMap: set lowResData: ", geoHash, file=sys.stderr)
   if ("total" in lowResMap):
     r.set(geoHash, pickle.dumps(lowResMap))
   else:
-    print("tile:", geoHash, " is NULL. delete")
+    print("tile:", geoHash, " is NULL. delete", file=sys.stderr)
     r.delete(geoHash)
 
 
@@ -495,10 +505,16 @@ def setDataList(registDataList, keys):
     key = keys[j]
     data = registDataList[j]["data"]
     if UseRedisHash:
-      pipe.hset(key, data, data)
+      hkey = registDataList[j]["hkey"]
+      pipe.hset(key, hkey,
+                data)  # 緯度経度も含め全データをハッシュキーにしてたのは時として丸めが起きハッシュキーとして疑問ありなので、除外したものを"hkey"に入れる(これはgetOneDataで作ってる)
+      # 緯度経度から生成されたgeoHashが1番目のredisキー、2番目のhashキーがその他のデータ(もしくはデータのID)　という形で検索できるのでそれで良いと考える
+      # もしデータの緯度経度が変更されるようなデータ変更が起きる場合、データ変更前の緯度経度(もしくはgeoHash)をセットで送れば問題ないはず
     else:
       pipe.rpush(key, data)
-  pipe.execute()
+  ans = pipe.execute()
+  # print ("setDataList:",ans,file=sys.stderr)
+  return (ans)
 
 
 def checkSizes(keys):
@@ -566,9 +582,11 @@ def registData(oneData, maxLevel):
   registDataList.append(oneData)
   if len(registDataList) < burstSize:
     pass  # debug... 2019/2/21
+    psize = -1
   else:
-    burstRegistData(registDataList, maxLevel)
+    psize = burstRegistData(registDataList, maxLevel)
     registDataList = []
+  return (psize)
 
 
 def burstRegistData(registDataList, maxLevel):
@@ -576,24 +594,26 @@ def burstRegistData(registDataList, maxLevel):
   keys = investigateKeys(registDataList, maxLevel)
   # print ("keys:",keys)
   # print (registDataList)
-  setDataList(registDataList, keys)
+  ans = setDataList(registDataList, keys)
   dataSizes = checkSizes(keys)  # dataSizes: dict [geoHash:size]
   burstQuadPart(dataSizes)
 
   # print ("dataSizes:",dataSizes)
+  return ({"success": len(ans), "keys": keys})
 
 
 def flushRegistData(maxLevel):
   # バッファにたまっているデータをしっかり書き出してバッファもクリアする
   global registDataList
-  burstRegistData(registDataList, maxLevel)
+  psize = burstRegistData(registDataList, maxLevel)
   registDataList = []
+  return (psize)
 
 
 # データを１個追加する。 [[[ OBSOLUTED ]]]
 # これを呼んだだけではLowResMapは更新されない。
 # LowResMapの更新方法は２つ
-# データ１個づつ更新させたい場合 updateAllLowResMap
+# データ１個づつ更新させたい場合 updateAncestorsLowResMap
 # 全部作り直す場合 buildAllLowResMap
 def registOneData(oneData, maxLevel):
   lat = oneData.lat
@@ -619,7 +639,7 @@ def registOneData(oneData, maxLevel):
         # overflowed lowResMap
         # overflowしたキーは、バイナリ（ストリング）データとして固有オブジェクト構造を保存している
         overFlowKeys[ans] = True
-        print("add over flow keys: " + ans)
+        print("add over flow keys: " + ans, file=sys.stderr)
       elif rType == b"list":
         ## realData
         tileDataSize = r.llen(ans)
@@ -646,25 +666,29 @@ def deleteData(oneData, maxLevel):
   deleteDataList.append(oneData)
   if len(deleteDataList) < burstSize:
     pass  # debug.. なんかハマった・・
+    psize = -1
   else:
-    burstDeleteData(deleteDataList, maxLevel)
+    psize = burstDeleteData(deleteDataList, maxLevel)
     deleteDataList = []
+  return (psize)
 
 
 def flushDeleteData(maxLevel):
   # バッファにたまっているデータ分も消去してバッファもクリアする
   global deleteDataList
-  burstDeleteData(deleteDataList, maxLevel)
+  psize = burstDeleteData(deleteDataList, maxLevel)
   deleteDataList = []
+  return (psize)
 
 
 def burstDeleteData(deleteDatas, maxLevel):
   # 一括してデータの削除を行う
   keys = investigateKeys(deleteDatas, maxLevel)
-  delDataList(deleteDatas, keys)
+  ans = delDataList(deleteDatas, keys)
   dataSizes = checkSiblingSizes(keys)  # dataSizes: dict [geoHash:size]
-  print("dataSizes:", dataSizes)
+  print("burstDeleteData dataSizes:", dataSizes, file=sys.stderr)
   burstCombine(dataSizes)
+  return ({"success": len(ans), "keys": keys})
 
 
 def burstCombine(dataSizes):
@@ -681,7 +705,7 @@ def burstCombine(dataSizes):
       else:
         pipe = r.pipeline()
         combinedKeys[pKey] = True
-        print("burstCombine:", key, "->", pKey)
+        print("burstCombine:", key, "->", pKey, file=sys.stderr)
         pipe.hgetall(pKey + "A")
         pipe.hgetall(pKey + "B")
         pipe.hgetall(pKey + "C")
@@ -704,13 +728,15 @@ def delDataList(deleteDatas, geoHashKeys):
   pipe = r.pipeline()
   for j in range(len(geoHashKeys)):
     geoHashKey = geoHashKeys[j]
-    data = deleteDatas[j]["data"]
+    hkey = deleteDatas[j]["hkey"]
     if UseRedisHash:
-      pipe.hdel(geoHashKey, data)
+      print("hdel", geoHashKey, hkey)
+      pipe.hdel(geoHashKey, hkey)
     else:
       pass
   ans = pipe.execute()
-  # print("delDataList pipe:::", ans)
+  print("delDataList pipe:::", ans, deleteDatas, geoHashKeys, file=sys.stderr)
+  return (ans)
 
 
 def saveAllSvgMap(lowResImage=False):
@@ -728,7 +754,7 @@ def saveAllSvgMap(lowResImage=False):
     saveSvgMapTileN(key, dtype, lowResImage)
     #    saveSvgMapTile(key, dtype) # 性能が悪いのでobsolute・・・
     if (j % 20 == 0):
-      print(100 * (j / len(bkeys)), "%")
+      print(100 * (j / len(bkeys)), "%", file=sys.stderr)
 
 
 def saveSvgMapTile(geoHash, dtype=None):  # pythonのXML遅くて足かせになったので、この関数は使わなくしました 2019/1/16
@@ -814,7 +840,7 @@ def saveSvgMapTile(geoHash, dtype=None):  # pythonのXML遅くて足かせにな
     else:
       src = r.hgetall(geoHash)
       src = list(src.values())
-    print(geoHash, "readData:len", len(src))
+    print(geoHash, "readData:len", len(src), file=sys.stderr)
     for poidata in src:
       poi = poidata.decode().split(',', -1)
       lat = float(poi[0])
@@ -866,7 +892,7 @@ def saveSvgMapTileN(
   outStrL.append("<globalCoordinateSystem srsName='http://purl.org/crs/84' transform='matrix(100,0,0,-100,0,0)'/>\n")
 
   if dtype == b"string":  # そのタイルはオーバーフローしている実データがないlowRes pickleタイル
-    if lats < 360:  # レベル0のタイルじゃない場合はそのレベルの低解像度タイルを入れる
+    if lats < 360:  # レベル0のタイル(レイヤールートコンテナ)じゃない場合はそのレベルの低解像度タイルを入れる
       pixW = 100 * lngs / lowresMapSize
       pixH = 100 * lats / lowresMapSize
       outStrL.append("<g fill='blue' visibleMaxZoom='{:.3f}'>\n".format((topVisibleMinZoom * pow(2, thisZoom - 1))))
@@ -943,7 +969,10 @@ def saveSvgMapTileN(
     if lats < 360:
       outStrL.append("</g>\n<g fill='blue' visibleMinZoom='{:.3f}'>\n".format(
           (topVisibleMinZoom * pow(2, thisZoom - 1))))
-    else:
+    else:  # レベル0のレイヤルートコンテナの場合
+      outStrL.append(
+          "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
+      )
       outStrL.append("<g>\n")
 
     for i, exs in enumerate(ceFlg):  # link to child tiles
@@ -981,7 +1010,7 @@ def saveSvgMapTileN(
       src = r.hgetall(geoHash)
       src = list(src.values())
 
-    print(geoHash, "real Data:len", len(src))
+    print(geoHash, "real Data:len", len(src), file=sys.stderr)
     for poidata in src:
       poi = poidata.decode().split(',', -1)
       lat = float(poi[0])
@@ -1073,22 +1102,11 @@ def readAndRegistData(file, latCol, lngCol, maxLevel):
     # rowはList
     # row[0]で必要な項目を取得することができる
     #     print(row)
-    lat = float(row[latCol])
-    lng = float(row[lngCol])
-    meta = ""
-    mi = 0
-    for i, data in enumerate(row):
-      if (i != latCol and i != lngCol):
-        meta += data
-        if mi < len(csvSchema) - 1:
-          meta += ","
-        mi = mi + 1
-    # print("ParsedCsvData:",lat,lng,meta)
-    oneData = {"lat": lat, "lng": lng, "data": row[latCol] + "," + row[lngCol] + "," + meta}
+    oneData = getOneData(row, latCol, lngCol)
     registData(oneData, maxLevel)
     lines = lines + 1
     if (lines % 1000 == 0):
-      print(lines)
+      print(lines, file=sys.stderr)
 
   flushRegistData(maxLevel)  # バッファを全部書き出す
 
@@ -1101,24 +1119,34 @@ def readAndDeleteData(file, latCol, lngCol, maxLevel):
     # rowはList
     # row[0]で必要な項目を取得することができる
     #     print(row)
-    lat = float(row[latCol])
-    lng = float(row[lngCol])
-    meta = ""
-    mi = 0
-    for i, data in enumerate(row):
-      if (i != latCol and i != lngCol):
-        meta += data
-        if mi < len(csvSchema) - 1:
-          meta += ","
-        mi = mi + 1
-    # print("ParsedCsvData:",lat,lng,meta)
-    oneData = {"lat": lat, "lng": lng, "data": row[latCol] + "," + row[lngCol] + "," + meta}
+    oneData = getOneData(row, latCol, lngCol)
     deleteData(oneData, maxLevel)
     lines = lines + 1
     if (lines % 1000 == 0):
-      print(lines)
+      print(lines, file=sys.stderr)
 
   flushDeleteData(maxLevel)  # バッファを全部消去処理して完了させる
+
+
+def getOneData(row, latCol, lngCol):
+  lat = float(row[latCol])
+  lng = float(row[lngCol])
+  meta = ""
+  mi = 0
+  for i, data in enumerate(row):
+    if (i != latCol and i != lngCol):
+      meta += data
+      if mi < len(csvSchema) - 1:
+        meta += ","
+      mi = mi + 1
+  # print("ParsedCsvData:",lat,lng,meta)
+  oneData = {
+      "lat": lat,
+      "lng": lng,
+      "data": row[latCol] + "," + row[lngCol] + "," + meta,
+      "hkey": meta
+  }  # hkeyで実データのハッシュを直に指定 2019/3/13
+  return (oneData)
 
 
 def main():
@@ -1156,15 +1184,15 @@ def main():
   if (newcsv):
     inputcsv = newcsv
   elif (appendcsv):
-    print("APPEND MODE using : ", appendcsv)
+    print("APPEND MODE using : ", appendcsv, file=sys.stderr)
     inputcsv = appendcsv
     appendMode = True
   elif (deletecsv):
-    print("DELETE MODE using : ", deletecsv)
+    print("DELETE MODE using : ", deletecsv, file=sys.stderr)
     inputcsv = deletecsv
     deleteMode = True
 
-  print("rebuildFromFile:", inputcsv, "  appendFromFile:", appendcsv, " appendMode:", appendMode)
+  print("rebuildFromFile:", inputcsv, "  appendFromFile:", appendcsv, " appendMode:", appendMode, file=sys.stderr)
 
   if (args.debug):
     saveSvgMapTileN("BDDD", None, True)
@@ -1179,7 +1207,7 @@ def main():
     return
 
   if (not appendMode and not deleteMode):
-    print("FlushDB")
+    print("FlushDB", file=sys.stderr)
     r.flushdb()  # DBを消去する
 
   # csvファイルリーダーを作る
@@ -1194,10 +1222,10 @@ def main():
   else:
     # スキーマレコードは必ず新しく作った時だけに生成するようにしておく　ねんのため
     csvSchemaObj = {"schema": csvSchema, "type": csvSchemaType, "latCol": latCol, "lngCol": lngCol}
-    print("csvSchemaObj:", csvSchemaObj)
+    print("csvSchemaObj:", csvSchemaObj, file=sys.stderr)
     r.set(b"schema", pickle.dumps(csvSchemaObj))
 
-  print("latCol,lngCol,csvSchema, csvSchemaType:", latCol, lngCol, csvSchema, csvSchemaType)
+  print("latCol,lngCol,csvSchema, csvSchemaType:", latCol, lngCol, csvSchema, csvSchemaType, file=sys.stderr)
 
   # CSVファイルを読み込みデータをredisに登録する
   if (deleteMode):
@@ -1213,7 +1241,7 @@ def main():
   # SVGMapコンテンツ(オプションによって低解像ビットイメージ)を全部一から生成する
   saveAllSvgMap(lowResIsBitImage)
 
-  print("schema:", pickle.loads(r.get(b"schema")))
+  print("schema:", pickle.loads(r.get(b"schema")), file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,9 @@
 from flask import Flask, request, send_from_directory, Response, send_file
 import urllib.parse
 import sys, os
+import json
+from collections import OrderedDict
+# import pprint
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import csv2redis11 as csv2redis  # 上で上のディレクトリをappendしてるのでimportできる
@@ -27,7 +30,8 @@ app = Flask(__name__)
 
 SAVE_DIR = "webApps"
 
-LowResImage = False  # 小縮尺タイルをrectVectorではなくPNGビットイメージにする場合はTrueに
+# LowResImage = False  # 小縮尺タイルをrectVectorではなくPNGビットイメージにする場合はTrueに
+LowResImage = True
 
 
 @app.route("/")
@@ -41,6 +45,66 @@ def hello_world2():
   user = request.args.get('hello')
   print('This is error output', file=sys.stderr)
   return ("QUERY:" + urllib.parse.unquote(ustr) + " : " + urllib.parse.unquote(user))
+
+
+@app.route("/svgmap/editPoint", methods=['POST'])
+def capturePost():
+  # print(request.headers, file=sys.stderr)
+  jsStr = (request.data).decode()
+  # print(jsStr, file=sys.stderr)
+  jsData = json.loads(jsStr)
+  print("json:", jsData, file=sys.stderr)
+  if jsData["action"] == "MODIFY":
+    print("MODIFY: start : ", file=sys.stderr)
+    originPoi = getData(jsData["from"])
+    changeToPoi = getData(jsData["to"])
+    csv2redis.init()
+
+    csv2redis.deleteData(originPoi, csv2redis.maxLevel)
+    psize = csv2redis.flushDeleteData(csv2redis.maxLevel)
+    originGeoHash = psize["keys"][0]
+    print("Step1 DELETE: end : deleted size:", psize, file=sys.stderr)
+    csv2redis.registData(changeToPoi, csv2redis.maxLevel)
+    psize = csv2redis.flushRegistData(csv2redis.maxLevel)
+    changeToGeoHash = psize["keys"][0]
+    print("Step2 ADD: end : added size:", psize, file=sys.stderr)
+
+    csv2redis.updateAncestorsLowResMap(originGeoHash)
+    if (originGeoHash != changeToGeoHash):
+      csv2redis.updateAncestorsLowResMap(changeToGeoHash)
+
+    print("MODIFY: end : ", file=sys.stderr)
+
+  elif jsData["action"] == "ADD":
+    addPoi = getData(jsData["to"])
+    print("ADD: start : ", addPoi, file=sys.stderr)
+    csv2redis.init()
+    csv2redis.registData(addPoi, csv2redis.maxLevel)
+    psize = csv2redis.flushRegistData(csv2redis.maxLevel)
+    print("ADD: update lrmap")
+    csv2redis.updateAncestorsLowResMap(psize["keys"][0])
+    print("ADD: end : added size:", psize, file=sys.stderr)
+
+  elif jsData["action"] == "DELETE":
+    delPoi = getData(jsData["from"])
+    print("DELETE: start : ", delPoi, file=sys.stderr)
+    csv2redis.init()
+    csv2redis.deleteData(delPoi, csv2redis.maxLevel)
+    psize = csv2redis.flushDeleteData(csv2redis.maxLevel)
+    print("DELETE: update lrmap")
+    csv2redis.updateAncestorsLowResMap(psize["keys"][0])
+    print("DELETE: end : deleted size:", psize, file=sys.stderr)
+
+  return request.data
+
+
+def getData(poiData):
+  lat = poiData["latitude"]
+  lng = poiData["longitude"]
+  meta = poiData["metadata"]
+  out = {"lat": lat, "lng": lng, "data": str(lat) + "," + str(lng) + "," + meta, "hkey": meta}
+
+  return out
 
 
 @app.route("/svgmap")
@@ -80,7 +144,7 @@ def getMalTile(tileName="index.html"):
     else:  # PNG
       pngByteIo = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True, True)
       return send_file(pngByteIo, mimetype='image/png')
-  elif tileName.startswith("svgMap") and tileName.endswith(".svg"):  # root
+  elif tileName.startswith("svgMap") and tileName.endswith(".svg"):  # for root svg content
     csv2redis.init()
     svgContent = csv2redis.saveSvgMapTileN(None, None, LowResImage, True)
     return Response(svgContent, mimetype='image/svg+xml')
