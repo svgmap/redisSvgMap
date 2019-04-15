@@ -54,7 +54,7 @@ csvSchemaType = []
 latCol = -1
 lngCol = -1
 titleCol = -1
-idCol = -1 # 2019/4/2 geoHash下のhashSetのhashKeyとして、このカラムを使う（なければ適当に作っている・・・ メタデータあればメタデータ全部足した文字列、なければ緯度経度の100000倍をつなげたもの
+idCol = -1  # 2019/4/2 geoHash下のhashSetのhashKeyとして、このカラムを使う（なければ適当に作っている・・・ メタデータあればメタデータ全部足した文字列、なければ緯度経度の100000倍をつなげたもの
 
 overFlowKeys = {}  # quadPartを実行し、子供の階層を構築したメッシュ （オンメモリであり永続化されているわけではない）
 updatedLrMapKeys = {}  # 上のdictで足りると思うが、テストのために実装してみる　pointを追加したとき、そのpointを直上のlrMapのdictを入れる　今後恐らく一点単位の登録が発生すると意味が出てくる？
@@ -119,7 +119,7 @@ def registLrMap(lrMap, xyKey, splitedData):
         else:
           pixData[i][val] = 1
       elif csvSchemaType[i] == T_NUMB:  # 数値型データの統計　最大最小・標準偏差とかもあると良いと思うが・・
-        if ( val != "-"):
+        if (val != "-"):
           fVal = float(val)
           if (pixData[i] == None):
             pixData[i] = []
@@ -132,7 +132,7 @@ def registLrMap(lrMap, xyKey, splitedData):
             pixData[i][1] += 1
             if (pixData[i][2] > fVal):  # minVal added 2019/4/11
               pixData[i][2] = fVal
-            elif (pixData[i][3] < fVal): # maxVal
+            elif (pixData[i][3] < fVal):  # maxVal
               pixData[i][3] = fVal
       else:  # 文字列型　あまり意味ない　とりあえず総文字数カウントでもしとくか・・
         if (pixData[i] == None):
@@ -296,7 +296,13 @@ def updateAncestorsLowResMap(key):
       updateLowResMap(sKey, thisTile, childTiles)
 
 
+buildAllLowResMapCount = 0
+def getBuildAllLowResMapCount():
+  return buildAllLowResMapCount
+
+
 def buildAllLowResMap(keys=None):
+  global buildAllLowResMapCount
   # 全LowResMapを一から生成しなおす（元のLowResMapデータがあっても利用せず上書き)
   global r
   if (keys == None):
@@ -307,6 +313,8 @@ def buildAllLowResMap(keys=None):
       keys.append(key.decode())
 
   # print ( "buildAllLowResMap: Keys:",bkeys )
+
+  buildAllLowResMapCount = 0
 
   for key in reversed(keys):  # 下のレベルから
     # key = key.decode()
@@ -329,6 +337,8 @@ def buildAllLowResMap(keys=None):
 
     else:  # そのタイルは実データが入っている(b"list")のデータ
       print("This is real data:", key, r.type(key), file=sys.stderr)
+
+    buildAllLowResMapCount = buildAllLowResMapCount + 1
 
 
 def printAllLowResMap():
@@ -460,13 +470,13 @@ def updateLowResMapSub(parentLowResMap, childLowResMap, px0, py0):
               parentPixData[i].append(childPixData[i][2])
               parentPixData[i].append(childPixData[i][3])
             else:
-              parentPixData[i][0] += childPixData[i][0] # 加算値
-              parentPixData[i][1] += childPixData[i][1] # 総個数
+              parentPixData[i][0] += childPixData[i][0]  # 加算値
+              parentPixData[i][1] += childPixData[i][1]  # 総個数
               if (parentPixData[i][2] > childPixData[i][2]):  # min
                 parentPixData[i][2] = childPixData[i][2]
               elif (parentPixData[i][3] < childPixData[i][3]):  # max
                 parentPixData[i][3] = childPixData[i][3]
-                
+
           else:  # 文字列・・
             if parentPixData[i] == None:
               parentPixData[i] = childPixData[i]
@@ -1064,7 +1074,7 @@ def saveSvgMapTileN(
       lat = float(poi[0])
       lng = float(poi[1])
       del poi[0:2]
-      if ( titleCol >=0):
+      if (titleCol >= 0):
         title = poi[titleCol]
       else:
         title = poi[0]
@@ -1126,7 +1136,8 @@ def getSchema(header):
       lngCol = i
     elif (hdname.find("北緯") >= 0 or hdname.lower().find("latitude") >= 0 or hdname.find("緯度") >= 0) and latCol == -1:
       latCol = i
-    elif (hdname.lower().find("title") >= 0 or hdname.lower().find("name") >= 0 or hdname.find("名称") >= 0) and titleCol == -1:
+    elif (hdname.lower().find("title") >= 0 or hdname.lower().find("name") >= 0 or
+          hdname.find("名称") >= 0) and titleCol == -1:
       titleCol = i
       # titleColはメタデータとしてもstring型として作っておくことにします
       csvSchema.append(hdname)
@@ -1186,7 +1197,8 @@ def readAndDeleteData(file, latCol, lngCol, maxLevel):
 
   flushDeleteData(maxLevel)  # バッファを全部消去処理して完了させる
 
-def validateData(dataStr, index): # スキーマと照合して整合性チェックする　実質は数値のみ
+
+def validateData(dataStr, index):  # スキーマと照合して整合性チェックする　実質は数値のみ
   ans = False
   if csvSchemaType[index] == T_ENUM:
     ans = True
@@ -1206,10 +1218,10 @@ def getOneData(row, latCol, lngCol, idCol=-1):
   mi = 0
   for i, data in enumerate(row):
     if (i != latCol and i != lngCol):
-      if ( validateData(data,mi)):
+      if (validateData(data, mi)):
         meta += data
       else:
-        meta +="-"
+        meta += "-"
       if mi < len(csvSchema) - 1:
         meta += ","
       mi = mi + 1

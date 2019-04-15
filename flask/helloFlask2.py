@@ -69,10 +69,11 @@ class redisRegistThread(threading.Thread):
     self.stop_event.set()
 
   def run(self):
+    global allLowResMapLen
     self.progress = "S0_jsonLoading"
     jsData = json.loads(self.jsStr)
     # print("json:", jsData, file=sys.stderr)
-    geoHashes = []
+    geoHashes = set()
     csv2redis.init()
     if jsData["action"] == "MODIFY":
       print("MODIFY: start : ", file=sys.stderr)
@@ -81,41 +82,35 @@ class redisRegistThread(threading.Thread):
       count = 0
       for originPoi in originPois:
         ret = csv2redis.deleteData((originPoi), csv2redis.maxLevel)
-        geoHashes.extend(ret["keys"])
-        self.progress = "S1_" + str(count)
+        geoHashes.update(ret["keys"])
+        self.progress = "S1_" + str(count) + "/" + str(len(originPois))
         count = count + 1
       ret = csv2redis.flushDeleteData(csv2redis.maxLevel)
-      geoHashes.extend(ret["keys"])
+      geoHashes.update(ret["keys"])
       print("Step1 DELETE: end : geoHashes:", geoHashes, file=sys.stderr)
       count = 0
       for changeToPoi in changeToPois:
         ret = csv2redis.registData((changeToPoi), csv2redis.maxLevel)
-        geoHashes.extend(ret["keys"])
-        self.progress = "S2_" + str(count)
+        geoHashes.update(ret["keys"])
+        self.progress = "S2_" + str(count) + "/" + str(len(changeToPois))
         count = count + 1
       ret = csv2redis.flushRegistData(csv2redis.maxLevel)
-      geoHashes.extend(ret["keys"])
+      geoHashes.update(ret["keys"])
       print("Step2 ADD: end : geoHashes:", geoHashes, file=sys.stderr)
-      self.progress = "S3_updateLowResMaps"
-      csv2redis.updateLowResMaps(set(geoHashes))
-      print("MODIFY: end : ", file=sys.stderr)
 
     elif jsData["action"] == "ADD":
       addPois = getData(jsData["to"])
-      print("ADD: start : ", addPois, file=sys.stderr)
+      print("ADD: start : ", file=sys.stderr)
       count = 0
       for addPoi in addPois:
         ret = csv2redis.registData((addPoi), csv2redis.maxLevel)
-        geoHashes.extend(ret["keys"])
-        self.progress = "S1_" + str(count)
+        geoHashes.update(ret["keys"])
+        self.progress = "S1_" + str(count) + "/" + str(len(addPois))
         count = count + 1
       ret = csv2redis.flushRegistData(csv2redis.maxLevel)
       print("registKeys:", ret)
-      geoHashes.extend(ret["keys"])
+      geoHashes.update(ret["keys"])
       print("ADD: update lrmap")
-      self.progress = "S3_updateLowResMaps"
-      csv2redis.updateLowResMaps(set(geoHashes))
-      print("ADD: end : geoHashes:", geoHashes, file=sys.stderr)
 
     elif jsData["action"] == "DELETE":
       delPois = getData(jsData["from"])
@@ -123,15 +118,17 @@ class redisRegistThread(threading.Thread):
       count = 0
       for delPoi in delPois:
         ret = csv2redis.deleteData((delPoi), csv2redis.maxLevel)
-        geoHashes.extend(ret["keys"])
-        self.progress = "S1_" + str(count)
+        geoHashes.update(ret["keys"])
+        self.progress = "S1_" + str(count) + "/" + str(len(delPois))
         count = count + 1
       ret = csv2redis.flushDeleteData(csv2redis.maxLevel)
-      geoHashes.extend(ret["keys"])
+      geoHashes.update(ret["keys"])
       print("DELETE: update lrmap")
-      self.progress = "S3_updateLowResMaps"
-      csv2redis.updateLowResMaps(set(geoHashes))
       print("DELETE: end : geoHashes:", geoHashes, file=sys.stderr)
+    self.progress = "S3_"
+    allLowResMapLen = len(geoHashes)
+    csv2redis.updateLowResMaps(geoHashes)
+    print("COMPLETED : geoHashes:", geoHashes, file=sys.stderr)
     self.progress = "COMPLETED"
 
 
@@ -150,10 +147,16 @@ def capturePost():
   return "POST Accepted."
 
 
+allLowResMapLen = 0
+
+
 @app.route("/svgmap/editStatus")
 def getEditStat():
   if (isinstance(redisRegistJob, redisRegistThread) and redisRegistJob.isAlive()):
     regStat = redisRegistJob.progress
+    if regStat == "S3_":
+      regStat = "S3_" + str(csv2redis.getBuildAllLowResMapCount()) + "/" + str(allLowResMapLen)
+      pass
     return ("Status: " + regStat)
   else:
     return ("Not registering")
