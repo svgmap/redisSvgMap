@@ -1,0 +1,531 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Bulk Regist Tools for Dynamic POI DB/Redis</title>
+<meta charset="UTF-8">
+</head>
+
+<style>
+#loader
+{
+    position: relative;
+    width: 20px; /*ローディングアイコンの横サイズ*/
+    height: 20px; /*ローディングアイコンの縦サイズ*/
+    border-radius: 20px;  /*CSS3で円を書く*/
+    border: 4px solid #1740dd;  /*円に○の白枠をつける*/
+    border-right-color: transparent; /*円の右にC状の空きをつける*/
+}
+#loader
+{
+    animation: spin 1s linear infinite; /*1秒毎にくるくる回転するアニメーション*/
+}
+@keyframes spin
+{
+    0% { transform: rotate(0deg);   opacity: 0.2; } /*0%の時は20％の透明度*/
+    50%  { transform: rotate(180deg); opacity: 1.0; } /*50%の時は透明度なし*/
+    100%   { transform: rotate(360deg); opacity: 0.2; } /*100%の時に20％の透明度に戻る*/
+ 
+}
+</style>
+
+<script>
+
+var metaSchema,redisSvgMapRoot;
+onload = function(){
+	console.log("Called onload : opener : ", window.opener);
+	if ( !window.opener ){
+		document.getElementById("list").innerText=("Error... no window.opener");
+	}
+	console.log("Called onload2 : opener : ", window.opener.redisSvgMapRoot, window.opener.svgImageProps);
+	redisSvgMapRoot = window.opener.redisSvgMapRoot;
+	metaSchema = window.opener.getSchema();
+	console.log("metaSchema : ", metaSchema);
+	document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
+//	document.getElementById('fileInput').addEventListener('input', handleFileSelect, false);
+}
+
+// based on https://www.html5rocks.com/ja/tutorials/file/dndfiles/
+var inputFile;
+function handleFileSelect(evt) {
+	var charset = getCharset();
+	
+	
+	inputFile = evt.target.files[0]; // FileList object
+	console.log("tgt:",evt.target.files, "  charset:",charset);
+	// files is a FileList of File objects. List some properties.
+	var output = [];
+	output.push('<li><strong>', escape(inputFile.name), '</strong> (', inputFile.type || 'n/a', ') - ',inputFile.size, ' bytes, last modified: ',inputFile.lastModifiedDate.toLocaleDateString(), '</li>');
+	document.getElementById('list').innerHTML = '<ul>' + output.join('') + '</ul>';
+//	readCsv(inputFile, charset);
+}
+
+function updateProgress(evt) {
+	// evt is an ProgressEvent.
+	if (evt.lengthComputable) {
+		var percentLoaded = Math.round((evt.loaded / evt.total) * 100);
+		// Increase the progress bar length.
+		if (percentLoaded < 100) {
+			document.getElementById('progress').style.width = 3 * percentLoaded + 'px';
+			document.getElementById('progress').style.backgroundColor="#50a050";
+			if ( percentLoaded >=90){
+				document.getElementById('progress').textContent = percentLoaded + '% Almost Completed';
+			} else {
+				document.getElementById('progress').textContent = percentLoaded + '%';
+			}
+			
+		} else {
+			document.getElementById('progress').style.width = '100px';
+			document.getElementById('progress').textContent = '';
+			document.getElementById('progress').style.backgroundColor="";
+		}
+		console.log(percentLoaded);
+	}
+}
+
+var cols = 0;
+var csv;
+function readCsv(file, charset){
+	document.getElementById('data').innerHTML = "";
+	document.getElementById('data2').innerHTML = "";
+	cols = 0;
+	var reader = new FileReader();
+	reader.onprogress = updateProgress;
+	reader.onload = (function(theFile) {
+		csv = theFile.target.result;
+		csv = csv.replace("\r","");
+		csv = csv.split("\n");
+//		console.log("file:",csv);
+		var output = [];
+		var overlimit = false;
+		output.push('<table border="1">');
+		for ( var i = 0 ; i < csv.length ; i++ ){
+			if ( csv[i] == "" ){
+				continue;
+			}
+			var csvline = csv[i].split(",");
+			if (csvline.length > cols ){
+				cols = csvline.length;
+			}
+			// console.log(csvline.length,csvline);
+			if ( csvline.length > 0){
+				output.push('<tr>');
+				for ( var j = 0 ; j < csvline.length ;j++){
+					output.push('<td>',csvline[j],'</td>');
+				}
+				output.push('</tr>');
+			}
+			if ( i==499){ // 0...499 line
+				output.push('<tr><td colspan="100">Total '+ csv.length +' lines. Omitted to the first 500 lines.  View <select id="overlimit" onchange="selectpart(event)"></select> lines.</td></tr>');
+				overlimit = true;
+				break;
+			}
+		}
+		output.push('</table>');
+		document.getElementById('data').innerHTML = output.join('');
+		var tbody = document.getElementById('data').firstChild.firstChild;
+		console.log("tbody:",tbody);
+		var schemaRow = document.createElement("tr");
+		for ( var i = 0 ; i < cols ; i++ ){
+			var td = document.createElement("td");
+			td.appendChild(getSchemaSelection(i));
+//			td.innerHTML = i;
+			schemaRow.appendChild(td);
+		}
+		tbody.insertBefore(schemaRow, tbody.firstChild);
+		bindColumn(-1);
+		if ( overlimit ){
+			buildOverlimitUi();
+		}
+	});
+	reader.readAsText(file,charset); // プログレスバー設置や銭湯だけ読み込みなどはTBD
+}
+
+function buildOverlimitUi(){
+	var sel = document.getElementById('overlimit');
+	for ( var i = 0 ; i < csv.length / 500 ; i++ ){
+		var opt = document.createElement("option");
+		opt.value= i;
+		if ( i==0){
+			opt.textContent = "--";
+		} else if( i== Math.floor(csv.length / 500)){
+			opt.textContent = (i * 500 +1) + ".." + (csv.length);
+		} else {
+			opt.textContent = (i * 500 +1) +".."+((i+1)*500);
+		}
+		sel.appendChild(opt);
+	}
+}
+
+function selectpart(event){
+	console.log(event.target.selectedIndex);
+	var start = event.target.selectedIndex * 500;
+	var output = [];
+	output.push('<table border="1">');
+	for ( var l = 0 ; l < 500 ; l++){
+		i = l + start;
+		if ( !csv[i] || csv[i] == "" ){
+			continue;
+		}
+		var csvline = csv[i].split(",");
+		console.log(csvline.length,csvline);
+		if ( csvline.length > 0){
+			output.push('<tr>');
+			for ( var j = 0 ; j < csvline.length ;j++){
+				output.push('<td>',csvline[j],'</td>');
+			}
+			output.push('</tr>');
+		}
+	}
+	output.push('</table>');
+	document.getElementById('data2').innerHTML = output.join('');
+}
+		
+
+var metaSchema; // DBに設定されているスキーマ 接尾 :n,:s,:e 数値,文字,列挙
+
+function bindColumn(lineCount){ // スキーマとカラムの対応表を構築し、それに応じたUIの再設定も行う
+	console.log("called bindColumn");
+	bindSuccessCount = 0;
+	var tr = document.getElementById('data').firstChild.firstChild.firstChild.nextElementSibling; // 最初の行はSelectなのでその次の行
+	for ( var i = 0 ; i < lineCount-1 ; i++ ){
+		tr = tr.nextElementSibling;
+	}
+	var uiTd = document.getElementById('data').firstChild.firstChild.firstChild.firstChild;
+	var td = tr.firstChild;
+	for ( var i = 0 ; i < cols ; i++ ){
+		var txt = td.innerHTML;
+		var idx = metaSchema.length + 2; // "-"入り
+		if( propNameLike(txt , "latitude" )){
+			idx = metaSchema.length;
+		}
+		if( propNameLike(txt , "longitude" )){
+			idx = metaSchema.length+1;
+		}
+		for ( var j = 0 ; j < metaSchema.length ; j++ ){
+			if( propNameLike(txt , metaSchema[j].name )){
+				idx = j;
+			}
+		}
+		uiTd.firstChild.options[idx].selected=true;
+		if ( idx < metaSchema.length + 2 ){
+			++bindSuccessCount;
+		}
+		
+		console.log("name:",txt," idx:", ( (idx < metaSchema.length ) ? metaSchema[idx].name : (  idx== metaSchema.length + 2 ? "skip" : "lat/lng"  )));
+		
+		td = td.nextElementSibling;
+		uiTd = uiTd.nextElementSibling;
+	}
+	if ( lineCount <0 && bindSuccessCount >=2 ){
+		setSkip(1,true);
+		
+	}
+}
+
+
+function propNameLike( colName , schemaName ){
+	colName = colName.toLowerCase();
+	schemaName = schemaName.toLowerCase();
+	var ans = false;
+	if ( schemaName == "latitude"){
+		if ( colName.indexOf("lat")>=0 || colName.indexOf("lat")>=0 ||colName.indexOf("緯度")>=0 || colName.indexOf("北緯")>=0 ){
+			ans = true;
+		}
+	} else if ( schemaName== "longitude"){
+		if ( colName.indexOf("lon")>=0 || colName.indexOf("lng")>=0 ||colName.indexOf("経度")>=0 || colName.indexOf("東経")>=0 ){
+			ans = true;
+		}
+	} else if ( colName.indexOf(schemaName)>=0 ){
+		ans = true;
+	} else if ( schemaName.indexOf(colName)>=0 ){
+		ans = true;
+	}
+	// console.log(colName,schemaName,ans);
+	return ( ans );
+}
+
+
+function  getSchemaSelection(idx,latSel,lngSel){
+	var sel = document.createElement("select");
+	sel.id = "sc"+idx;
+	var opt,selected=false;
+	for ( var i = 0 ; i < metaSchema.length ; i++){
+		opt = document.createElement("option");
+		opt.value = metaSchema[i].name+":"+metaSchema[i].type;
+		opt.innerHTML = metaSchema[i].name+":"+metaSchema[i].type;
+		if ( idx == i ){
+			opt.selected = true;
+			selected = true;
+		}
+		sel.appendChild(opt);
+	}
+	opt = document.createElement("option");
+	opt.value = "latitude";
+	opt.innerHTML = "latitude";
+	if ( latSel ){
+		opt.selected = true;
+		selected = true;
+	} else if (!selected){
+		opt.selected = true;
+		selected = true;
+	}
+	sel.appendChild(opt);
+	
+	opt = document.createElement("option");
+	opt.value = "longitude";
+	opt.innerHTML = "longitude";
+	if ( lngSel ){
+		opt.selected = true;
+		selected = true;
+	} else if (!selected){
+		opt.selected = true;
+		selected = true;
+	}
+	sel.appendChild(opt);
+	
+	opt = document.createElement("option");
+	opt.value = "-";
+	opt.innerHTML = "-";
+	if (!selected){
+		opt.selected = true;
+		selected = true;
+	} else if (!selected){
+		opt.selected = true;
+		selected = true;
+	}
+	sel.appendChild(opt);
+	
+	return ( sel );
+}
+
+var csvcharset="UTF-8";
+function getCharset(){
+	var cs = document.getElementById("charset");
+	csvcharset = cs.options[cs.selectedIndex].value;
+	return charset;
+}
+
+
+var skipCount = 0;
+function setSkip(lines, noBindCol){
+	var cs = document.getElementById("skipHead");
+	if ( ! lines ){
+		skipCount = cs.selectedIndex;
+	} else {
+		cs.options[lines].selected=true;
+		skipCount = lines;
+	}
+	var tbody = document.getElementById('data').firstChild.firstChild;
+	var tr = tbody.firstChild;
+	for ( var i = 0 ; i <10 ; i++ ){
+		tr = tr.nextElementSibling;
+		if ( i < skipCount ){
+			tr.setAttribute("style","background-color:#909090");
+		} else {
+			tr.setAttribute("style","background-color:");
+		}
+	}
+	if ( ! noBindCol){
+		bindColumn(skipCount);
+	}
+}
+
+function validateData(metadata){
+	// CSVのデータがスキーマに適合しているかどうかをテストする
+	// TBD
+	return (window.opener.validateData(metadata));
+}
+
+// used global: csv, skipCount, metaSchema
+function pushCsv(){
+	list.innerText="client-side processing";
+	var qJson = {};
+	qJson.action = "ADD";
+	qJson["to"] = [];
+	var csvSchema = getCsvSchema();
+	console.log("csvSchema:",csvSchema,"  skipCount:",skipCount,"  metaSchema:",metaSchema);
+	
+	for ( var i = skipCount ; i < csv.length ; i++ ){
+		if ( csv[i] == "" ){
+			continue;
+		}
+		var jData ={};
+		var csvLine = csv[i];
+		var csvData = csvLine.split(",");
+		for ( var j = 0 ; j < csvData.length ; j++){
+			if ( csvSchema[j]!="-"){
+				jData[csvSchema[j]] = csvData[j];
+			}
+		}
+		// console.log(jData);
+		
+		var metaString ="";
+		for ( var j = 0 ; j < metaSchema.length ; j++ ){
+			var propName = metaSchema[j].name+":"+metaSchema[j].type;
+			if ( jData[propName] ){
+				metaString += jData[propName];
+			} else {
+			}
+			if ( j < metaSchema.length -1 ){
+				metaString += ",";
+			}
+		}
+		
+		var qData = {
+//			latitude: Number(jData.latitude),
+//			longitude : Number(jData.longitude),
+			latitude: (jData.latitude),
+			longitude : (jData.longitude),
+			metadata: metaString
+		}
+		
+		qJson["to"].push(qData);
+	}
+	
+	var jsonStr = JSON.stringify(qJson);
+	console.log(jsonStr);
+	var postURL = redisSvgMapRoot +"/svgmap/editPoint";
+	list.innerHTML="Posting data to server<div id='loader'></div>";
+	window.opener.doPost(postURL,jsonStr,postCB);
+}
+
+function postCB(stat, message){
+	console.log("postCB:",stat,message);
+	if (stat){
+		if ( message.toLowerCase().indexOf("accepted")>=0 ){
+			list.innerHTML="Now Registering on Server<div id='loader'></div>";
+			data.innerText="";
+			checkRegistStatus();
+		} else {
+			list.innerText="Post Failure : "+message;
+		}
+	} else {
+		list.innerText="Post Failure";
+	}
+}
+
+function checkRegistStatus(){ // まずはポーリングでやってみますね
+	var xhr = new XMLHttpRequest();
+	xhr.addEventListener("load", function(){
+		console.log(this.responseText);
+		if ( this.responseText.indexOf("Not registering")>=0){
+			list.innerText="Post Success";
+			window.opener.reLoadLayer();
+		} else {
+			list.innerHTML="Now Registering on Server"+this.responseText+"<div id='loader'></div>";
+			setTimeout(checkRegistStatus,250);
+		}
+	});
+	xhr.open("GET",  redisSvgMapRoot +"/svgmap/editStatus");
+	xhr.send();
+}
+
+function getCsvSchema(){ // 入力したCSVのmetaSchemaとのカラム対応表を得る
+	var uiTr = document.getElementById('data').firstChild.firstChild.firstChild;
+	var uiTds = uiTr.childNodes;
+	//console.log(uiTr,uiTds,metaSchema);
+	var csvSchema = [];
+	for ( var i = 0 ; i < uiTds.length ; i++ ){
+		idx = uiTds[i].firstChild.selectedIndex;
+		//console.log(idx, uiTds[i].firstChild.options[idx].value);
+		csvSchema.push(uiTds[i].firstChild.options[idx].value);
+	}
+	
+	return csvSchema;
+}
+
+var delConf=false;
+function deleteAllDB0(){
+	console.log("deleteAllDB0");
+	if (delConf == false){
+		document.getElementById("delAllcancel").style.display="";
+		document.getElementById("delAll").value="削除実行";
+		delConf = true;
+	} else {
+		document.getElementById("delAllcancel").style.display="none";
+		document.getElementById("delAll").value="DB全削除";
+		var getURL = redisSvgMapRoot +"/svgmap/deleteAllData";
+		delConf = false;
+		console.log("削除を実際に実施します！！ : ",getURL);
+		var xhr = new XMLHttpRequest();
+		xhr.open("GET", getURL, true);
+		xhr.onload = function(e){
+			if (xhr.readyState === 4) {
+				if (xhr.status === 200) {
+					console.log(xhr.responseText);
+					list.innerText=xhr.responseText;
+					setTimeout(window.opener.reLoadLayer,1000);
+				}else {
+					console.error(xhr.statusText);
+				}
+			}
+		}
+		xhr.onerror = function (e) {
+			console.error(xhr.statusText);
+		}
+		xhr.send( null );
+	}
+	
+}
+function deleteAllDBcancel(){
+	delConf = false;
+	document.getElementById("delAllcancel").style.display="none";
+	document.getElementById("delAll").value="DB全削除";
+}
+
+</script>
+<body>
+<h1>Redis Regist Form</h1>
+<div>CSV:<input type="file" name="csv" id="fileInput" >
+ charset:
+<select id="charset" onchange="getCharset()">
+<option value="UTF-8">UTF-8</option>
+<option value="SJIS">SJIS</option>
+</select>
+
+<input type="button" onclick="readCsv(inputFile, csvcharset)" value="読み込み" id="readCsvButton"/>
+<input type="button" onclick="pushCsv()" value="登録" id="pushCsvButton" />
+<span id="progress" style="width:100px;display:inline-block;"></span>
+</div>
+<div>
+<output  id="list"></output >
+</div>
+<div>
+ skip first:
+<select id="skipHead" onchange="setSkip()">
+<option value="0">0</option>
+<option value="1">1</option>
+<option value="2">2</option>
+<option value="3">3</option>
+<option value="4">4</option>
+<option value="5">5</option>
+<option value="6">6</option>
+<option value="7">7</option>
+</select> lines
+</div>
+<output  id="data"></output >
+<output  id="data2"></output >
+<div style="background-color:#FF9090">Danger Zone: <input type="button" onclick="deleteAllDB0()" value="DB全削除" id="delAll" /><input style="display:none;" type="button" onclick="deleteAllDBcancel()" value="キャンセル" id="delAllcancel" /></div>
+<!--
+<div>
+<button>
+<span style="display: inline-block;overflow: hidden;width: 50px;height: 50px;">
+<img  style="margin-top: -11px;margin-left: -16px;" src="122625-color-arrow-collection.png" width="200" height="200">
+</span>
+</button>
+</div>
+<div>
+<button>
+<span style="display: inline-block;overflow: hidden;width: 50px;height: 20px;">
+<img  src="122625-color-arrow-collection.png" width="200" height="200">
+</span>
+</button>
+<button>
+<span style="display: inline-block;overflow: hidden;width: 50px;height: 50px;">
+<img  src="122625-color-arrow-collection.png" width="200" height="200">
+</span>
+</button>
+</div>
+-->
+</body>
+</html>

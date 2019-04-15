@@ -834,6 +834,19 @@ function setLayerDivProps( id, parentElem, parentSvgDocId ){ // parseSVGから�
 	}
 }
 
+function getNoCacheRequest( originalUrl ){
+//	強制的にキャッシュを除去するため、unixTimeをQueryに設置する
+//	console.log("NO CACHE GET REQUEST");
+	var rPath = originalUrl;
+	if (rPath.lastIndexOf("?")>0){
+		rPath += "&";
+	} else {
+		rPath += "?";
+	}
+	rPath += "unixTime=" + (new Date()).getTime();
+	return ( rPath );
+}
+
 // loadSVG(this)[XHR] -(非同期)-> handleResult[buildDOM] -> dynamicLoad[updateMap] -> parseSVG[parseXML & set/chgImage2Canvas] -> (if Necessary) ( (if Unloaded child) loadSVG(child)-(非同期)->... || (if already loaded child) parseSVG(child)... )
 // なお、起動時はloadSVGからだが、伸縮,スクロール,レイヤON/OFFなどでの読み込み表示処理の起点はdynamicLoadから(rootの文書は起動時に読み込み済みで変わらないため)
 function loadSVG( path , id , parentElem , parentSvgDocId) {
@@ -857,14 +870,7 @@ function loadSVG( path , id , parentElem , parentSvgDocId) {
 			// rootLayersProps[thisDoc's rootLayer=].noCacheがtrueの場合に発動する
 			var rPath = path;
 			if ( svgImagesProps[id].rootLayer && svgImagesProps[svgImagesProps[id].rootLayer].noCache ){
-//				console.log("NO CACHE GET REQUEST");
-				rPath = path;
-				if (path.lastIndexOf("?")>0){
-					rPath += "&";
-				} else {
-					rPath += "?";
-				}
-				rPath += "linuxTime=" + (new Date()).getTime();
+				rPath = getNoCacheRequest(rPath);
 			}
 			
 			if ( typeof getUrlViaProxy == "function" ){ // original 2014.2.25 by konno (たぶん)サイドエフェクトが小さいここに移動 s.takagi 2016.8.10
@@ -1439,7 +1445,6 @@ function parseSVG( svgElem , docId , parentElem , eraseAll , symbols , inCanvas 
 				}
 				
 //				console.log("intSpan:" + xd.span + " id:" + imageId);
-				
 				if (!imgElem ){  // ロードされていないとき
 					// svgのimageのx,y,w,hをsvg座標⇒Canvas座標に変換
 //					console.log("docPath:" + docPath + " docDir:" + docDir + " href:" + ip.href);
@@ -1447,7 +1452,8 @@ function parseSVG( svgElem , docId , parentElem , eraseAll , symbols , inCanvas 
 					var img;
 					if ( childCategory == POI || childCategory == BITIMAGE ){ // image,use要素の場合
 						var imageURL = getImageURL(ip.href,docDir);
-						img = getImgElement(xd.p0 , yd.p0, xd.span , yd.span , imageURL , imageId , ip.opacity , childCategory , ip.metadata , ip.title , elmTransform , ip.href_fragment , ip.pixelated );
+						var isNoCache = (childCategory == BITIMAGE && svgImagesProps[svgImagesProps[docId].rootLayer].noCache);
+						img = getImgElement(xd.p0 , yd.p0, xd.span , yd.span , imageURL , imageId , ip.opacity , childCategory , ip.metadata , ip.title , elmTransform , ip.href_fragment , ip.pixelated , isNoCache);
 						
 					} else if ( childCategory == TEXT ){ // text要素の場合(2014.7.22)
 						var cStyle = getStyle( svgNode , pStyle );
@@ -2184,7 +2190,7 @@ function getIntValue( p0 , span0 ){ // y側でも使えます
 
 var loadingImgs = new Array(); // 読み込み途上のimgのリストが入る
 
-function getImgElement( x, y, width, height, href , id , opacity , category , meta , title , transform , href_fragment , pixelated ){
+function getImgElement( x, y, width, height, href , id , opacity , category , meta , title , transform , href_fragment , pixelated , nocache){
 	var img = document.createElement("img");
 	
 	if ( pixelated ){ // Disable anti-alias http://dachou.daa.jp/tanaka_parsonal/pixelart-topics/  Edgeが・・・
@@ -2198,6 +2204,10 @@ function getImgElement( x, y, width, height, href , id , opacity , category , me
 	
 	if ( href_fragment ){ // 2015.7.3 spatial fragment
 		img.setAttribute("href_fragment",href_fragment);
+	}
+	
+	if ( nocache ) { // ビットイメージにもnocacheを反映させてみる 2019.3.18
+		href = getNoCacheRequest(href);
 	}
 	
 	if ( verIE > 8 ){
@@ -2330,7 +2340,7 @@ function setImgElement( img , x, y, width, height, href , transform , cdx , cdy 
 		img.width = width;
 		img.height = height;
 	}
-	if ( !txtFlg && img.src && href && img.getAttribute("src") != href){ // firefoxでは(同じURLかどうかに関わらず)srcを書き換えるとロードしなおしてしまうのを抑制 2014.6.12 絶対パスになってバグが出てない？2015.7.8 getAttrで取れば絶対パスにならないで破たんしない。
+	if ( !txtFlg && img.src && href && isHrefChanged(img.getAttribute("src"), href)  ){ // firefoxでは(同じURLかどうかに関わらず)srcを書き換えるとロードしなおしてしまうのを抑制 2014.6.12 絶対パスになってバグが出てない？2015.7.8 getAttrで取れば絶対パスにならないで破たんしない。
 //		console.log("src set href:",href, "  src:",img.src, "  imgElem:",img, "  getAttrImg", img.getAttribute("src"));
 		img.src = href;
 	}
@@ -2347,6 +2357,24 @@ function setImgElement( img , x, y, width, height, href , transform , cdx , cdy 
 	if ( href_fragment ){ // added 2015.7.8
 		setImgViewport( img, href_fragment );
 	}
+}
+
+function isHrefChanged(htmlSrc, svgHref){
+	var ans = true;
+	if ( htmlSrc == svgHref ){
+		return ( false );
+	}
+	
+	if ( htmlSrc.indexOf(svgHref) == 0 ){
+		var difS = htmlSrc.substring(svgHref.length);
+		if ( difS.indexOf("unixTime=")>0 && difS.length < 24 ){ // たぶん、unixTimeが追加されているだけだと考える
+			ans = false;
+			// console.log("this url may be only added unixTime prop");
+		}
+	} else { // case -1 , >0
+		// ans = true
+	}
+	return ( ans );
 }
 
 function hideAllTileImgs(){ // 2014.6.10 setGeoCenter,setGeoViewPortのちらつき改善
@@ -3056,7 +3084,8 @@ function getBBox( x , y , width , height ){
 
 // 指定したimageIdのSVG文書のchildを全消去する
 function removeChildDocs( imageId ){
-	if ( svgImages[imageId] && !svgImagesProps[imageId].editable){
+//	if ( svgImages[imageId] && !svgImagesProps[imageId].editable){} // 仕様変更 2019/3/20 editableレイヤーでも、DOMを消去することにした
+	if ( svgImages[imageId] ){
 //		console.log("remove:" + imageId);
 		var anims = getLayers(imageId);
 		for ( var i = 0 ; i < anims.length ; i++ ){
@@ -7013,12 +7042,15 @@ function reLoadLayer(layerID_Numb_Title){
 // この関数は必ずリロードが起こることは保証できない。
 // なお、確実にリロードさせるには、ルートコンテナの該当レイヤ要素にdata-nocache="true"を
 // 設定する必要がある
-	console.log("called reLoadLayer : ",layerID_Numb_Title);
+	var layerId = getLayerId(getLayer(layerID_Numb_Title));
+	var editing = svgImagesProps[layerId].editing;
+	console.log("called reLoadLayer : ",layerID_Numb_Title,"  id:",layerId, "  editing:",editing);
 	setRootLayersProps(layerID_Numb_Title,false,false);
 	refreshScreen(); // これはロードが発生しないはずなので同期で呼び出してしまう
 	
 	setRootLayersProps(layerID_Numb_Title,true,false);
 	refreshScreen();  // これは非同期動作のハズ
+	setRootLayersProps(layerID_Numb_Title,true,editing); // editing付きで上で呼んでもエラーになるが、いったんレイヤー作った後に呼べばエラーにならない(裏技的な・・) 2019/3/18
 }
 
 // 同じ関数がSVGMapLv0.1_LayerUI2_r2.jsにもある・・(getHash)

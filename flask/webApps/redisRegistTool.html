@@ -1,7 +1,7 @@
 <!DOCTYPE HTML>
 <html>
 <head>
-<title>authoring tools tests for tiled maps</title>
+<title>Dynamic POI Layer / Redis Regist Tools</title>
 <meta charset="UTF-8">
 </head>
 
@@ -93,11 +93,17 @@ function editConf(eparam){
 		
 	}
 	console.log("editConf",eparam,eparam.element);
-	if ( eparam.attrs ){
+	if ( eparam.attrs ){ // add or mod
 		newData = getAttrs(eparam.attrs, true);
 		var elem = eparam.element;
 		console.log("elem:",elem);
 		elem.setAttribute("content",newData.metadata);
+		var valid = validateData(newData.metadata.split(","));
+		if ( ! valid ){
+			console.log("DATA ERROR... exit");
+			// 元のデータに戻す必要があるが・・TBD
+			return;
+		}
 	}
 	
 	
@@ -107,36 +113,48 @@ function editConf(eparam){
 		return;
 	} else if ( eparam.confStat === "Delete"){
 		qJson.action = "DELETE";
-		qJson.from = originalData;
+		qJson.from = [originalData];
 	} else {
 		if ( originalData ){// case modify
 			qJson.action = "MODIFY";
-			qJson.from = originalData;
-			qJson.to = newData;
+			qJson.from = [originalData];
+			qJson.to = [newData];
 		} else {
 			qJson.action = "ADD";
-			qJson.to = newData;
+			qJson.to = [newData];
 		}
 	}
-	jsonStr = JSON.stringify(qJson);
-	console.log(jsonStr);
+	var jsonStr = JSON.stringify(qJson);
+	console.log("jsonStr:",jsonStr);
 	console.log({doc:document});
 	var postURL=redisSvgMapRoot+"/svgmap/editPoint";
 	console.log(postURL);
 	doPost(postURL,jsonStr);
 }
 
-function doPost(url, jsonStr) {
+function doPost(url, jsonStr , cbFunc) {
+	pepok.disabled="true";
+	pepok.value="登録中";
 	var xhr = new XMLHttpRequest();
 	xhr.open("POST", url);
 	xhr.setRequestHeader("Content-Type", "application/json");
 	xhr.onload = function(){
-		console.log("POST OK : ", xhr.status);
+		console.log("POST OK : ", xhr.status, "    Resp : ",xhr.responseText);
+		pepok.value="決定";
+		pepok.disabled="";
+		cbFunc(true,xhr.responseText);
 	};
 	xhr.onerror = function(){
 		console.log("POST FAIL.... : ",xhr.status);
+		pepok.value="決定";
+		pepok.disabled="";
+		cbFunc(false);
 	};
 	xhr.send( jsonStr );
+}
+
+function reLoadLayer(){
+	svgMap.reLoadLayer(layerID);
 }
 
 var panelMode = 0;
@@ -161,10 +179,48 @@ function testModalCB( index ,param ){
 	console.log("index:",index,"  param:",param);
 }
 
+var metaSchema;
+function getSchema(){
+	var metaSchema = svgImageProps.metaSchema.split(",");
+	for ( var i = 0 ; i < metaSchema.length ; i++ ){
+		attr = metaSchema[i].split(":");
+		metaSchema[i] = {
+			name : attr[0],
+			type : attr[1] // n:number , e:enum, s:string
+		}
+	}
+	return metaSchema;
+}
+function validateData(metadata){
+	// make schema
+	if ( ! metaSchema ){
+		metaSchema = getSchema();
+	}
+	console.log(metaSchema);
+	if ( metadata.length != metaSchema.length ){
+		console.log( "Length of metadata is invalid");
+		return (false );
+	}
+	for ( var i = 0 ; i < metadata.length ; i++ ){
+		switch (metaSchema[i].type){
+		case "n": // check if Number
+			if ( isNaN(metadata[i] )){
+				console.log(metadata[i] , " should be Number.");
+				return ( false );
+			}
+			break;
+		}
+	}
+	return ( true );
+}
+
 </script>
 <body>
 <h2>AirportLayerAuthoringTools</h2>
 <div id="poiTools"></div>
+<input type="button" value="レイヤー再読み込み" onClick="reLoadLayer()"/>
+<hr>
+<button id="bitimage" onClick="window.open('redisRegistForm.html','sub','width=800,height=600');return false;"  >open Bulk Regist Tool</button>
 <h2>other tests</h2>
 <input type="button" value="test" onClick="testLibs()"/>
 <input type="button" value="changePoiPanel" onClick="changePoiPanel()"/>
