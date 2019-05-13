@@ -13,8 +13,11 @@ onload=function(){
 	console.log("redisSvgMapRoot:", redisSvgMapRoot);
 	setTimeout(initAuthoringUI,10);
 	setTimeout(addListener,10);
+	setTimeout(listSubLayers,10);
 }
 
+var currentSubLayerHash ="s2_";
+var currentSubLayerName ="default";
 
 function addListener(){
 	window.addEventListener('openFrame',function(e) {
@@ -23,7 +26,6 @@ function addListener(){
 	window.addEventListener('closeFrame',function(e) {
 		console.log("Close airportAuthoring Iframe");
 	});
-
 	window.addEventListener('appearFrame',function(e) {
 		console.log("Appear airportAuthoring Iframe");
 	});
@@ -33,22 +35,68 @@ function addListener(){
 }
 
 
+var subLayers ={};
+function listSubLayers(selIndex){
+	
+	oldOpts = subLayersSel.childNodes;
+	for ( var i = oldOpts.length -1 ; i >= 0 ; i-- ){
+		subLayersSel.removeChild(oldOpts[i]);
+	}
+	
+	var xhr = new XMLHttpRequest();
+	xhr.open("GET", "listSubLayers");
+	xhr.send();
+	xhr.addEventListener("load",function(ev){
+//		console.log("listSubLayers:",ev.target.responseText);
+		json = JSON.parse(ev.target.responseText);
+		subLayers = json;
+		console.log("JSON:",json);
+		var i = 0;
+		var opt;
+		for ( key in json ){
+			opt = document.createElement("option");
+			opt.value = key;
+			opt.innerText = json[key];
+			if ( selIndex != undefined  && selIndex == i){
+				opt.selected = true;
+			}
+			subLayersSel.appendChild(opt);
+			++i;
+		}
+		if ( selIndex == -1 ){
+			opt.selected = true;
+		}
+		if ( selIndex != undefined ){
+			changeSubLayers(null,selIndex);
+		}
+	});
+}
+
 
 var authoringToolProps;
 var timeAttr = -1;
 function initAuthoringUI(){
-	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
+	timeAttr = -1;
+//	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
 	console.log(this);
 //	console.log(layerID,(svgMap.getSvgImagesProps())[layerID].metaSchema);
-	metaSchema = svgImageProps.metaSchema.split(",")
-	console.log(metaSchema);
+	
+	setSubLayerMetaSchema2RootLayer();
+	
+	console.log("svgImageProps.metaSchema:",svgImageProps.metaSchema);
+//	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
+//	metaSchema = svgImageProps.metaSchema.split(",");
+	metaSchema = getSchema();
+	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
+	console.log("metaSchema:", metaSchema);
 	for ( var i = 0 ; i < metaSchema.length ; i++ ){
-		if ( metaSchema[i].toLowerCase().indexOf("registtime:n")>=0){
+		if ( metaSchema[i].name.toLowerCase().indexOf("registtime")>=0){
 			timeAttr = i;
 		}
 	}
 	if ( timeAttr !=-1 ){
-		console.log( timeAttr,document.getElementById("meta"+timeAttr).disabled=true);
+		console.log( timeAttr);
+		document.getElementById("meta"+timeAttr).disabled=true;
 	}
 }
 
@@ -127,7 +175,7 @@ function editConf(eparam){
 	var jsonStr = JSON.stringify(qJson);
 	console.log("jsonStr:",jsonStr);
 	console.log({doc:document});
-	var postURL=redisSvgMapRoot+"/svgmap/editPoint";
+	var postURL=redisSvgMapRoot + "/svgmap/" + currentSubLayerHash + "/editPoint";
 	console.log(postURL);
 	doPost(postURL,jsonStr);
 }
@@ -142,19 +190,51 @@ function doPost(url, jsonStr , cbFunc) {
 		console.log("POST OK : ", xhr.status, "    Resp : ",xhr.responseText);
 		pepok.value="決定";
 		pepok.disabled="";
-		cbFunc(true,xhr.responseText);
+		if ( typeof cbFunc == "function"  ) {
+			cbFunc(true,xhr.responseText);
+		}
 	};
 	xhr.onerror = function(){
 		console.log("POST FAIL.... : ",xhr.status);
 		pepok.value="決定";
 		pepok.disabled="";
-		cbFunc(false);
+		if ( typeof cbFunc == "function" ){
+			cbFunc(false);
+		}
 	};
 	xhr.send( jsonStr );
 }
 
 function reLoadLayer(){
-	svgMap.reLoadLayer(layerID);
+	console.log("reLoadLayer: layerID: ",layerID);
+	console.log("but in fact refresh screen.");
+//	svgMap.refreshScreen();
+//	svgMap.reLoadLayer(layerID);
+	reLoadSubLayer();
+}
+
+function reLoadSubLayer(){ // この呼び出しできちんと再読み込みされるのは、常時更新タイプ(data-nocache="true")だからかな
+	removeAllTemporaryPOIs();
+	var layerElem = svgImage.getElementById("subLayer");
+	layerElem.parentNode.removeChild(layerElem);
+	layerElem = svgImage.createElement("animation");
+	layerElem.setAttribute("id","subLayer");
+	layerElem.setAttribute("x",-30000);
+	layerElem.setAttribute("y",-30000);
+	layerElem.setAttribute("width",60000);
+	layerElem.setAttribute("height",60000);
+	layerElem.setAttribute("xlink:href", currentSubLayerHash+"/svgMapRoot.svg");
+	svgImage.documentElement.appendChild(layerElem);
+	svgMap.refreshScreen();
+//	setTimeout(initAuthoringUI,1000);
+}
+
+function removeAllTemporaryPOIs(){ // 編集ツールで作られたテンポラリなPOIを消去する
+	var tmpPois = svgImage.getElementsByTagName("use");
+	for ( var i = tmpPois.length - 1 ; i >= 0 ; i-- ){
+		var tmpPoi = tmpPois[i];
+		tmpPoi.parentNode.removeChild(tmpPoi);
+	}
 }
 
 var panelMode = 0;
@@ -182,15 +262,50 @@ function testModalCB( index ,param ){
 var metaSchema;
 function getSchema(){
 	var metaSchema = svgImageProps.metaSchema.split(",");
+	var metaSchemaType = svgImage.documentElement.getAttribute("data-property-type").split(",");
 	for ( var i = 0 ; i < metaSchema.length ; i++ ){
 		attr = metaSchema[i].split(":");
+		var stype="";
+		if ( metaSchemaType && metaSchemaType.length == metaSchema.length){
+			stype = metaSchemaType[i];
+		} else if ( attr.length > 1 ) {
+			switch (attr[1]){
+			case "n":
+				stype = "number";
+				break;
+			case "e":
+				stype = "enumeration";
+				break;
+			case "s":
+				stype = "string";
+				break;
+			}
+		}
 		metaSchema[i] = {
 			name : attr[0],
-			type : attr[1] // n:number , e:enum, s:string
+			type : stype // number , enumeration, string
 		}
 	}
 	return metaSchema;
 }
+
+function setSubLayerMetaSchema2RootLayer(){
+	var childId
+	for ( key in svgImageProps.childImages){
+		childId = key;
+	}
+	console.log("childId:",childId);
+	var svgImages = svgMap.getSvgImages();
+	var svgImagesProps = svgMap.getSvgImagesProps();
+	var currentSubLayerDoc = svgImages[childId];
+	var currentSubLayerProps = svgImagesProps[childId];
+	var subLayerMetaSchema = currentSubLayerProps.metaSchema.split(",");
+	
+	svgImage.documentElement.setAttribute("property",currentSubLayerDoc.documentElement.getAttribute("property"));
+	svgImage.documentElement.setAttribute("data-property-type",currentSubLayerDoc.documentElement.getAttribute("data-property-type"));
+	svgImageProps.metaSchema = currentSubLayerProps.metaSchema;
+}
+
 function validateData(metadata){
 	// make schema
 	if ( ! metaSchema ){
@@ -214,16 +329,54 @@ function validateData(metadata){
 	return ( true );
 }
 
+function changeSubLayers(event,numb){
+	removeAllTemporaryPOIs();
+	var selIndex = 0;
+	if ( numb != undefined ){
+		if ( numb < 0 ){
+			numb = document.getElementById("subLayersSel").options.length - 1;
+		}
+		selIndex = numb
+	} else {
+		selIndex = event.target.selectedIndex
+	}
+	layerHash = document.getElementById("subLayersSel").options[selIndex].value;
+	// console.log(document.getElementById("subLayersSel").selectedIndex, document.getElementById("subLayersSel").options[selIndex],layerHash);
+	var layerElem = svgImage.getElementById("subLayer");
+	layerElem.parentNode.removeChild(layerElem);
+	layerElem = svgImage.createElement("animation");
+	layerElem.setAttribute("id","subLayer");
+	layerElem.setAttribute("x",-30000);
+	layerElem.setAttribute("y",-30000);
+	layerElem.setAttribute("width",60000);
+	layerElem.setAttribute("height",60000);
+	layerElem.setAttribute("xlink:href", layerHash+"/svgMapRoot.svg");
+	svgImage.documentElement.appendChild(layerElem);
+	console.log(layerElem);
+	currentSubLayerHash = layerHash;
+	currentSubLayerName = document.getElementById("subLayersSel").options[selIndex].innerText;
+	svgMap.refreshScreen();
+	setTimeout(initAuthoringUI,1000);
+}
+
 </script>
 <body>
-<h2>AirportLayerAuthoringTools</h2>
+<h2>RedisPoiServerrAuthoringTools</h2>
+Sub layer: <select id="subLayersSel"  onchange="changeSubLayers(event)">
+<input type="button" onClick="window.open('redisDatasetBuilder.html','sub','width=1000,height=400');return false;" value="Manage sub layers"/>
+<!--<option value="s2_">default</option>-->
+</select>
+<hr>
 <div id="poiTools"></div>
 <input type="button" value="レイヤー再読み込み" onClick="reLoadLayer()"/>
 <hr>
 <button id="bitimage" onClick="window.open('redisRegistForm.html','sub','width=800,height=600');return false;"  >open Bulk Regist Tool</button>
+
+<!--
 <h2>other tests</h2>
 <input type="button" value="test" onClick="testLibs()"/>
 <input type="button" value="changePoiPanel" onClick="changePoiPanel()"/>
 <div id="testMsg"></div>
+-->
 </body>
 </html>

@@ -8,30 +8,33 @@
 <style>
 #loader
 {
-    position: relative;
-    width: 20px; /*ローディングアイコンの横サイズ*/
-    height: 20px; /*ローディングアイコンの縦サイズ*/
-    border-radius: 20px;  /*CSS3で円を書く*/
-    border: 4px solid #1740dd;  /*円に○の白枠をつける*/
-    border-right-color: transparent; /*円の右にC状の空きをつける*/
+	position: relative;
+	width: 20px; /*ローディングアイコンの横サイズ*/
+	height: 20px; /*ローディングアイコンの縦サイズ*/
+	border-radius: 20px;  /*CSS3で円を書く*/
+	border: 4px solid #1740dd;  /*円に○の白枠をつける*/
+	border-right-color: transparent; /*円の右にC状の空きをつける*/
 }
 #loader
 {
-    animation: spin 1s linear infinite; /*1秒毎にくるくる回転するアニメーション*/
+	animation: spin 1s linear infinite; /*1秒毎にくるくる回転するアニメーション*/
 }
 @keyframes spin
 {
-    0% { transform: rotate(0deg);   opacity: 0.2; } /*0%の時は20％の透明度*/
-    50%  { transform: rotate(180deg); opacity: 1.0; } /*50%の時は透明度なし*/
-    100%   { transform: rotate(360deg); opacity: 0.2; } /*100%の時に20％の透明度に戻る*/
- 
+	0% { transform: rotate(0deg);   opacity: 0.2; } /*0%の時は20％の透明度*/
+	50%  { transform: rotate(180deg); opacity: 1.0; } /*50%の時は透明度なし*/
+	100%   { transform: rotate(360deg); opacity: 0.2; } /*100%の時に20％の透明度に戻る*/
 }
 </style>
 
 <script>
 
-var metaSchema,redisSvgMapRoot;
+var metaSchema,redisSvgMapRoot,currentSubLayerHash,currentSubLayerName;
 onload = function(){
+	currentSubLayerHash = window.opener.currentSubLayerHash;
+	currentSubLayerName = window.opener.currentSubLayerName;
+	console.log(document.getElementById("subLayerName"));
+	document.getElementById("subLayerName").innerText = currentSubLayerName;
 	console.log("Called onload : opener : ", window.opener);
 	if ( !window.opener ){
 		document.getElementById("list").innerText=("Error... no window.opener");
@@ -48,7 +51,6 @@ onload = function(){
 var inputFile;
 function handleFileSelect(evt) {
 	var charset = getCharset();
-	
 	
 	inputFile = evt.target.files[0]; // FileList object
 	console.log("tgt:",evt.target.files, "  charset:",charset);
@@ -72,7 +74,6 @@ function updateProgress(evt) {
 			} else {
 				document.getElementById('progress').textContent = percentLoaded + '%';
 			}
-			
 		} else {
 			document.getElementById('progress').style.width = '100px';
 			document.getElementById('progress').textContent = '';
@@ -384,7 +385,7 @@ function pushCsv(){
 	
 	var jsonStr = JSON.stringify(qJson);
 	console.log(jsonStr);
-	var postURL = redisSvgMapRoot +"/svgmap/editPoint";
+	var postURL = redisSvgMapRoot +"/svgmap/"+currentSubLayerHash+"/editPoint";
 	list.innerHTML="Posting data to server<div id='loader'></div>";
 	window.opener.doPost(postURL,jsonStr,postCB);
 }
@@ -435,7 +436,9 @@ function getCsvSchema(){ // 入力したCSVのmetaSchemaとのカラム対応表
 }
 
 var delConf=false;
+
 function deleteAllDB0(){
+//	currentSubLayerHash = window.opener.currentSubLayerHash;
 	console.log("deleteAllDB0");
 	if (delConf == false){
 		document.getElementById("delAllcancel").style.display="";
@@ -444,7 +447,7 @@ function deleteAllDB0(){
 	} else {
 		document.getElementById("delAllcancel").style.display="none";
 		document.getElementById("delAll").value="DB全削除";
-		var getURL = redisSvgMapRoot +"/svgmap/deleteAllData";
+		var getURL = redisSvgMapRoot +"/svgmap/"+currentSubLayerHash+"/deleteAllData";
 		delConf = false;
 		console.log("削除を実際に実施します！！ : ",getURL);
 		var xhr = new XMLHttpRequest();
@@ -475,7 +478,8 @@ function deleteAllDBcancel(){
 
 </script>
 <body>
-<h1>Redis Regist Form</h1>
+<h2>Redis Regist Form  for <span id="subLayerName"></span></h2>
+<div></div>
 <div>CSV:<input type="file" name="csv" id="fileInput" >
  charset:
 <select id="charset" onchange="getCharset()">

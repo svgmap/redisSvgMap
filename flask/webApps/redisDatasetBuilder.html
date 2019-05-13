@@ -1,0 +1,458 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Redis SVGMap Dataset Builder</title>
+<meta charset="UTF-8">
+</head>
+
+<script>
+
+var typeDict=["string","number","enumeration","latitude","longitude"];
+
+onload=function(){
+	setColsItem();
+	listSubLayers();
+	redisSvgMapRoot = window.opener.redisSvgMapRoot;
+}
+
+function setColsItem(){
+	for ( var i = 1 ; i < 20 ; i++){
+		var opt = document.createElement("option");
+		opt.value=i;
+		opt.innerText=i;
+		cols.appendChild(opt);
+	}
+}
+
+function setType(ev){
+	console.log(ev.target);
+}
+
+function setColumnName(event){
+//	console.log(event.target,event.target.selectedIndex, event.target.parentNode.parentNode.firstChild.firstChild.value,event.target.options);
+	var si = event.target.selectedIndex ;
+	console.log("setColumnName:",event);
+	var colNameInput = event.target.parentNode.parentNode.childNodes[1].firstChild;
+	if ( si > typeDict.length-3 ){
+		checkPositionSchema(Number((event.target.parentNode.parentNode.id).substring(2)),si);
+		colNameInput.value = event.target.options[si].value;
+		colNameInput.disabled=true;
+	} else {
+		if ( colNameInput.value ==typeDict[typeDict.length-1] || colNameInput.value ==typeDict[typeDict.length-2]){
+			colNameInput.value = "";
+			colNameInput.disabled=false;
+		}
+	}
+}
+
+function checkPositionSchema(colI,selIdx){
+	console.log(colI,selIdx);
+	for ( var i = 0 ; i < schemaTable.childNodes.length ; i++ ){
+		if ( i != colI){
+			var col = schemaTable.childNodes[i];
+			var colType = col.childNodes[2].firstChild.selectedIndex 
+			console.log(col.id, colType);
+			if ( colType == selIdx){
+				col.childNodes[2].firstChild.selectedIndex = 0;
+				var tg = {};
+				tg.target=col.childNodes[2].firstChild;
+				setColumnName(tg);
+			}
+		}
+	}
+}
+
+function setColumn(evt){
+	schemaTable.innerHTML="";
+	console.log(evt.target.selectedIndex);
+	
+	var selHtml = '<select name="columns" onchange="setColumnName(event)">';
+	for ( var i = 0 ; i < typeDict.length ; i++){
+		selHtml += '<option value="'+typeDict[i]+'">'+typeDict[i]+'</option>';
+	}
+	selHtml +='</select>';
+	
+	for ( var i = 0 ; i < evt.target.selectedIndex ; i++){
+		var col = document.createElement("tr");
+		var colNumb = document.createElement("td");
+		colNumb.innerText = i;
+		var colName = document.createElement("td");
+		var colType = document.createElement("td");
+		colName.innerHTML='<input type="text" placeholder="ColumnName'+i+'" ></input>';
+		col.appendChild(colNumb);
+		col.appendChild(colName);
+		col.appendChild(colType);
+		col.id="sc"+i;
+		colType.innerHTML=selHtml;
+		schemaTable.appendChild(col);
+	}
+}
+
+function getSchema(){
+	var schema=[];
+	var hasLat = false;
+	var hasLng = false;
+	
+	for ( var i = 0 ; i < schemaTable.childNodes.length ; i++ ){
+		var schemaName = schemaTable.childNodes[i].childNodes[1].firstChild.value;
+		if ( schemaName ==""){
+			schemaName="col"+i;
+		}
+		var schemaType = schemaTable.childNodes[i].childNodes[2].firstChild.selectedIndex;
+		if ( schemaType == typeDict.length-2){
+			hasLat = true;
+		} else if ( schemaType == typeDict.length-1){
+			hasLng = true;
+		}
+		var colsc= {
+			name:schemaName,
+			typeNumb:schemaType,
+			typeName:typeDict[schemaType]
+		}
+		schema.push(colsc);
+		console.log(i,schemaName,schemaType);
+	}
+	if ( !hasLat || !hasLng ){
+		// NG
+		console.log("Schema error! dont have lat or lng", hasLat , hasLng);
+		return;
+	}
+	var datasetKey  = buildKey();
+	if ( ! datasetKey ){
+		// NG
+		console.log("Dont have DataSetName error!");
+		return;
+	}
+	/**
+	var jsData = {
+		schema : schema,
+		key: datasetKey
+	}
+	**/
+	var redisSchema = buildRedisSchema(schema,datasetKey);
+	console.log("OK!  : ",redisSchema);
+	console.log("JSON: ", JSON.stringify(redisSchema));
+	
+	postJson(redisSchema,"buildLayer");
+}
+
+// static for schema["Type"]
+T_ENUM = 0
+T_NUMB = 1
+T_STR = 2
+function schemaConv(sName){
+	switch (sName){
+	case "string":
+		ans = T_STR;
+		break;
+	case "number":
+		ans = T_NUMB;
+		break;
+	case "enumeration":
+		ans = T_ENUM;
+		break;
+	case "latitude":
+		ans = T_NUMB;
+		break;
+	case "longitude":
+		ans = T_NUMB;
+		break;
+	}
+	return ( ans );
+}
+
+function buildRedisSchema(jsSchema,key){
+	var names = [];
+	var types = [];
+	var latCol = -1;
+	var lngCol = -1;
+	var titleCol = 0; // TBD
+	var idCol = -1;
+	for ( var i = 0 ; i < jsSchema.length ; i++ ){
+		var sname = jsSchema[i].name;
+		var stype =  schemaConv(jsSchema[i].typeName);
+		if ( sname == "latitude"){
+			latCol = i;
+		} else if ( sname == "longitude"){
+			lngCol = i;
+		} else {
+			names.push(sname);
+			types.push(stype);
+		}
+	}
+	csvSchemaObj = {
+		schema: names,
+		type: types,
+		latCol: latCol,
+		lngCol: lngCol,
+		titleCol: titleCol,
+		idCol: idCol,
+		namespace: "H"+key.hash+"_",
+		name: key.name
+	}
+	return ( csvSchemaObj );
+}
+
+function postJson(jsonData,url){
+//	url = "buildLayer";
+	var xhr = new XMLHttpRequest();
+	xhr.open("POST", url);
+	xhr.setRequestHeader("Content-Type", "application/json");
+	xhr.onload = function(){
+		console.log("POST OK : ", xhr.status, "    Resp : ",xhr.responseText,"    window.opener:",window.opener);
+		/**
+		pepok.value="決定";
+		pepok.disabled="";
+		cbFunc(true,xhr.responseText);
+		**/
+		window.opener.listSubLayers(-1);
+		document.getElementById("message").innerText="SUCCESS : "+xhr.responseText;
+		setTimeout(clearMessage,3000);
+	};
+	xhr.onerror = function(){
+		console.log("POST FAIL.... : ",xhr.status);
+		document.getElementById("message").innerText="FAIL...... ";
+		/**
+		pepok.value="決定";
+		pepok.disabled="";
+		cbFunc(false);
+		**/
+	};
+	xhr.send( JSON.stringify(jsonData) );
+}
+
+function clearMessage(){
+	document.getElementById("message").innerText="";
+}
+
+function buildKey(){
+	console.log(document.getElementById("dsName"));
+	var dsetName = document.getElementById("dsName").value;
+	if (dsetName==""){
+		return ( false );
+	}
+	var utime = (new Date() ).getTime();
+	var md2HexHash = md2.hex( utime+  dsetName );
+	return {
+		time:utime,
+		name:dsetName,
+		hash:md2HexHash
+	};
+}
+
+/*  /_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
+	http://user1.matsumoto.ne.jp/~goma/js/hash.html
+	charset= shift_jis
+	[RFC 1319] The MD2 Message-Digest Algorithm
+	http://www.ietf.org/rfc/rfc1319.txt
+	LastModified : 2006-11/14
+	Written by kerry
+	http://user1.matsumoto.ne.jp/~goma/
+	動作ブラウザ :: IE4+ , NN4.06+ , Gecko , Opera6
+	----------------------------------------------------------------
+	Usage
+	// 返り値を 16進数で得る
+	md2hash = md2.hex( data );
+	// 返り値をバイナリで得る
+	md2bin = md2.bin( data );
+	// 返り値を10進数の配列で得る
+	md2decs = md2.dec( data );
+	* data		-> ハッシュ値を得たいデータ
+	data はアンパック済みの配列でも可能
+	// e.g.
+	var data_1 = "abc";
+	var hash_1 = md2.hex( data_1 );
+	var data_2 = new Array(data_1.charCodeAt(0), data_1.charCodeAt(1), data_1.charCodeAt(2));
+	var hash_2 = md2.hex( data_2 );
+	alert( hash_1 === hash_2 ); // true
+/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/   */
+md2 = new function(){
+	var blockSize = 16;
+	this.hex = function(_data){
+		return toHex( getMD(_data) );
+	}
+	this.dec = function(_data){
+		return getMD(_data);
+	}
+	this.bin = function(_data){
+		return pack( getMD(_data) );
+	}
+	var getMD = function(_data){
+		var datz = [];
+		if (isAry(_data)) datz = _data;
+		else if (isStr(_data)) datz = unpack(_data);
+		else "unknown type";
+		datz = paddingData(datz);
+		datz = addCheckSum(datz);
+		return round(datz);
+	}
+	var isAry = function(_ary){
+		return _ary && _ary.constructor === [].constructor;
+	}
+	var isStr = function(_str){
+		return typeof(_str) == typeof("string");
+	}
+	var round = function(_dz){
+		var i, t, k, X = [];
+		var n = _dz.length/ blockSize;
+		for (i=0; i<48; i++) X[i] = 0;
+		for (i=0; i<n; i++){
+			for (j=0; j<=0xf; j++){
+				X[16+ j] = _dz[i* 16+ j];
+				X[32+ j] = X[16+ j]^ X[j];
+			}
+			for (t=j=0; j<18; j++){
+				for (k=0; k<48; k++)
+					t = X[k] ^= S[t];
+				t = (t+ j) % 256;
+			}
+		}
+		return X.slice(0, 16);
+	}
+	var addCheckSum = function(_dz){
+		var i, j, c;
+		var C = [];
+		var L = 0;
+		var n = _dz.length/ blockSize;
+		for (i=0; i<=0xf; i++) C[i] = 0;
+		for (i=0; i<n; i++){
+			for (j=0; j<=0xf; j++){
+				c = _dz[i* 16+ j];
+				C[j] ^= S[c ^ L];
+				L = C[j];
+			}
+		}
+		return _dz.concat(C);
+	}
+	var paddingData = function(_dz){
+		var n  	= _dz.length;
+		var md 	= blockSize- (n % blockSize);
+		for (var i=0; i<md; i++, n++) _dz[n] = md;
+		return _dz;
+	}
+	var toHex = function(_decz){
+		var i, hex = "";
+		for (i=0; i<_decz.length; i++)
+			hex += (_decz[i]>0xf?"":"0")+ _decz[i].toString(16);
+		return hex;
+	}
+
+	var unpack = function(_dat){
+		var i, n, tmp = [];
+		for (n=i=0; i<_dat.length; i++) {
+			c = _dat.charCodeAt(i);
+			if (c <= 0xff) tmp[n++] = c;
+			else {
+				tmp[n++] = c >>> 8;
+				tmp[n++] = c &  0xff;
+			}	
+	    }
+	    return tmp;
+	}
+
+	var pack = function(_ary){
+		var i, dat = "";
+		for (i in _ary) dat += String.fromCharCode(_ary[i]);
+		return dat;
+	}
+	
+	var S = [
+	41,  46,  67, 201, 162, 216, 124,   1,  61,  54,  84, 161, 236, 240,   6,  19, 
+	 98, 167,   5, 243, 192, 199, 115, 140, 152, 147,  43, 217, 188,  76, 130, 202, 
+	 30, 155,  87,  60, 253, 212, 224,  22, 103,  66, 111,  24, 138,  23, 229,  18, 
+	190,  78, 196, 214, 218, 158, 222,  73, 160, 251, 245, 142, 187,  47, 238, 122, 
+	169, 104, 121, 145,  21, 178,   7,  63, 148, 194,  16, 137,  11,  34,  95,  33, 
+	128, 127,  93, 154,  90, 144,  50,  39,  53,  62, 204, 231, 191, 247, 151,   3, 
+	255,  25,  48, 179,  72, 165, 181, 209, 215,  94, 146,  42, 172,  86, 170, 198, 
+	 79, 184,  56, 210, 150, 164, 125, 182, 118, 252, 107, 226, 156, 116,   4, 241, 
+	 69, 157, 112,  89, 100, 113, 135,  32, 134,  91, 207, 101, 230,  45, 168,   2, 
+	 27,  96,  37, 173, 174, 176, 185, 246,  28,  70,  97, 105,  52,  64, 126,  15, 
+	 85,  71, 163,  35, 221,  81, 175,  58, 195,  92, 249, 206, 186, 197, 234,  38, 
+	 44,  83,  13, 110, 133,  40, 132,   9, 211, 223, 205, 244,  65, 129,  77,  82, 
+	106, 220,  55, 200, 108, 193, 171, 250,  36, 225, 123,   8,  12, 189, 177,  74, 
+	120, 136, 149, 139, 227,  99, 232, 109, 233, 203, 213, 254,  59,   0,  29,  57, 
+	242, 239, 183,  14, 102,  88, 208, 228, 166, 119, 114, 248, 235, 117,  75,  10, 
+	 49,  68,  80, 180, 143, 237,  31,  26, 219, 153, 141,  51, 159,  17, 131,  20
+	];
+}
+
+
+function listSubLayers(){
+	var json = window.opener.subLayers;
+	console.log(json);
+	oldOpts = removeSubLayersSel.childNodes;
+	for ( var i = oldOpts.length -1 ; i >= 0 ; i-- ){
+		removeSubLayersSel.removeChild(oldOpts[i]);
+	}
+	var i = 0;
+	for ( key in json ){
+		if ( i > 0 ){
+			opt = document.createElement("option");
+			opt.value = key;
+			opt.innerText = json[key];
+			removeSubLayersSel.appendChild(opt);
+		}
+		++i;
+	}
+}
+
+var delConf=false;
+var redisSvgMapRoot ;
+function deleteAllDB0(){
+	selectedSubLayerHash = removeSubLayersSel.options[removeSubLayersSel.selectedIndex].value;
+	console.log("delete　dataset");
+	if (delConf == false){
+		document.getElementById("delAllcancel").style.display="";
+		document.getElementById("delAll").value="削除実行";
+		delConf = true;
+	} else {
+		document.getElementById("delAllcancel").style.display="none";
+		document.getElementById("delAll").value="サブレイヤ削除";
+		var getURL = redisSvgMapRoot +"/svgmap/removeDataset/"+selectedSubLayerHash;
+		delConf = false;
+		console.log("削除を実際に実施します！！ : ",getURL);
+		var xhr = new XMLHttpRequest();
+		xhr.open("GET", getURL, true);
+		xhr.onload = function(e){
+			if (xhr.readyState === 4) {
+				if (xhr.status === 200) {
+					console.log(xhr.responseText);
+					message.innerText=xhr.responseText;
+					setTimeout(window.opener.listSubLayers(0),1000);
+					setTimeout(listSubLayers,2000);
+				}else {
+					console.error(xhr.statusText);
+				}
+			}
+		}
+		xhr.onerror = function (e) {
+			console.error(xhr.statusText);
+		}
+		xhr.send( null );
+	}
+	
+}
+function deleteAllDBcancel(){
+	delConf = false;
+	document.getElementById("delAllcancel").style.display="none";
+	document.getElementById("delAll").value="DB全削除";
+}
+
+
+</script>
+<body>
+<h1>Redis Dataset Schema Builder</h1>
+<input type="text" placeholder="Input dataset name" id="dsName"></input>
+<select id="cols" name="columns" onchange="setColumn(event)">
+<option value="0">カラム数</option>
+</select>
+
+<hr>
+<table id="schemaTable">
+</table>
+<hr>
+<input type="button" value="makeSchema" onClick="getSchema()"/><span id="message"></span>
+
+<div style="background-color:#FF9090">Danger Zone: Remove subLayer: <select id="removeSubLayersSel"></select><input type="button" onclick="deleteAllDB0()" value="サブレイヤ削除" id="delAll" /><input style="display:none;" type="button" onclick="deleteAllDBcancel()" value="キャンセル" id="delAllcancel" /></div>
+</body>
+</html>
