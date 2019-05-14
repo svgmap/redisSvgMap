@@ -134,6 +134,7 @@ function getSchema(){
 	console.log("JSON: ", JSON.stringify(redisSchema));
 	
 	postJson(redisSchema,"buildLayer");
+	setTimeout(listSubLayers,3000);
 }
 
 // static for schema["Type"]

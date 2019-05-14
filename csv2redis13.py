@@ -582,7 +582,7 @@ def setDataList(registDataList, keys):
     if UseRedisHash:
       hkey = registDataList[j]["hkey"]
       pipe.hset(ns + key, hkey,
-                data)  # 緯度経度も含め全データをハッシュキーにしてたのは時として丸めが起きハッシュキーとして疑問ありなので、除外したものを"hkey"に入れる(これはgetOneDataで作ってる)
+                data)  # 緯度経度も含め全データをハッシュキーにしてたのは時として丸めが起きハッシュキーとして疑問ありなので、除外したものを"hkey"に入れる(これはスタンドアロンではgetOneDataで作っている。FlaskではgetDataで作っている)
       # 緯度経度から生成されたgeoHashが1番目のredisキー、2番目のhashキーがその他のデータ(もしくはデータのID)　という形で検索できるのでそれで良いと考える
       # もしデータの緯度経度が変更されるようなデータ変更が起きる場合、データ変更前の緯度経度(もしくはgeoHash)をセットで送れば問題ないはず
     else:
@@ -1264,6 +1264,7 @@ def validateData(dataStr, index):  # スキーマと照合して整合性チェ�
 def getOneData(row, latCol, lngCol, idCol=-1):
   csvSchema = schemaObj.get("schema")
   # csv１行分の配列から、登録用のデータを構築する。ここで、データの整合性もチェックする
+  # Flaskによるウェブサービスではこの関数は使ってない(2019.5.14)
   lat = float(row[latCol])
   lng = float(row[lngCol])
   meta = ""
@@ -1284,6 +1285,8 @@ def getOneData(row, latCol, lngCol, idCol=-1):
     hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000))
   else:
     hkey = meta
+
+  # print ("getOneData hkey:",hkey, file=sys.stderr)
 
   oneData = {
       "lat": lat,

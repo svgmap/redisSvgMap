@@ -150,6 +150,7 @@ function editConf(eparam){
 		if ( ! valid ){
 			console.log("DATA ERROR... exit");
 			// 元のデータに戻す必要があるが・・TBD
+			showMessage("Data validation error regist failed....");
 			return;
 		}
 	}
@@ -190,6 +191,7 @@ function doPost(url, jsonStr , cbFunc) {
 		console.log("POST OK : ", xhr.status, "    Resp : ",xhr.responseText);
 		pepok.value="決定";
 		pepok.disabled="";
+		showMessage("Data regist success.");
 		if ( typeof cbFunc == "function"  ) {
 			cbFunc(true,xhr.responseText);
 		}
@@ -198,12 +200,21 @@ function doPost(url, jsonStr , cbFunc) {
 		console.log("POST FAIL.... : ",xhr.status);
 		pepok.value="決定";
 		pepok.disabled="";
+		showMessage("Data regist fail.");
 		if ( typeof cbFunc == "function" ){
 			cbFunc(false);
 		}
 	};
 	xhr.send( jsonStr );
 }
+
+function showMessage(mes){
+	messageDiv.innerText=mes;
+	setTimeout(function(){
+		messageDiv.innerText="";
+	},5000);
+}
+
 
 function reLoadLayer(){
 	console.log("reLoadLayer: layerID: ",layerID);
@@ -307,6 +318,7 @@ function setSubLayerMetaSchema2RootLayer(){
 }
 
 function validateData(metadata){
+	console.log("validateData:",metadata);
 	// make schema
 	if ( ! metaSchema ){
 		metaSchema = getSchema();
@@ -317,8 +329,9 @@ function validateData(metadata){
 		return (false );
 	}
 	for ( var i = 0 ; i < metadata.length ; i++ ){
-		switch (metaSchema[i].type){
+		switch ((metaSchema[i].type).toLowerCase()){
 		case "n": // check if Number
+		case "number": // check if Number
 			if ( isNaN(metadata[i] )){
 				console.log(metadata[i] , " should be Number.");
 				return ( false );
@@ -371,6 +384,7 @@ Sub layer: <select id="subLayersSel"  onchange="changeSubLayers(event)">
 <input type="button" value="レイヤー再読み込み" onClick="reLoadLayer()"/>
 <hr>
 <button id="bitimage" onClick="window.open('redisRegistForm.html','sub','width=800,height=600');return false;"  >open Bulk Regist Tool</button>
+<div id="messageDiv"></div>
 
 <!--
 <h2>other tests</h2>

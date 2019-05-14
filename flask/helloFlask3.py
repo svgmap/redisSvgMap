@@ -37,6 +37,8 @@ app = Flask(__name__)
 
 now_registering = False  # POIの登録中を示すフラグ（登録をシングルに制限）
 
+generalHkey = True  # 個々のデータを投入するhmapのkey(これはgeoHashではなく、その下の個々のデータを入れる入れ物のハッシュキー(なのでどうでもいいといえばどうでもいい))をどうするか
+
 SAVE_DIR = "webApps"
 
 # LowResImage = False  # 小縮尺タイルをrectVectorではなくPNGビットイメージにする場合はTrueに
@@ -219,17 +221,24 @@ reg = re.compile(r"[^,]")
 
 
 def getData(poiDatas):
+  # redisに投入するPOIデータを生成する(csvではなくWebSertvice(Flask)で投入するとき用。csvファイル(バッチ)要は、csv2redisの中のgetOneData()が相当)
   out = []
   for poiData in poiDatas:
     lat = toNumber(poiData["latitude"])
     lng = toNumber(poiData["longitude"])
     meta = poiData["metadata"]
-    if (reg.search(meta)):
-      # POIのIDは苦慮中・・・metaにカンマ以外の文字があったらmetaをID(POI識別用HashKey)とする 2019/4/2
-      hkey = meta
+
+    if (generalHkey == True):
+      hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000)) + ":" + meta
+      # POIのIDは苦慮中・・・ひとまずほとんど何も考えないタイプでやってみる・・・(全部のデータを（ただし緯度経度は小数点以下５桁で丸め)足し合した文字列でキーとする））
+      print("generalHkey:", hkey)
     else:
-      # metaがカンマ以外何もないときは緯度経度の100000倍の値をHashKeyにする
-      hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000))
+      if (reg.search(meta)):
+        # POIのIDは苦慮中・・・metaにカンマ以外の文字があったらmetaをID(POI識別用HashKey)とする 2019/4/2
+        hkey = meta
+      else:
+        # metaがカンマ以外何もないときは緯度経度の100000倍の値をHashKeyにする
+        hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000))
 
     oneData = {"lat": lat, "lng": lng, "data": str(lat) + "," + str(lng) + "," + meta, "hkey": hkey}
 
