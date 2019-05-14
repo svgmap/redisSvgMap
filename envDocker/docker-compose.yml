@@ -1,0 +1,16 @@
+version: '3.3'
+
+services:
+  comp_python37:
+    image: python:redisSvgMap
+    tty: true
+    volumes:
+      - "./pythonShared:/data"
+    links:
+      - "comp_redishost:redishost"
+    ports:
+      - "8080:5000"
+  comp_redishost:
+    image: redis:5.0
+    ports:
+      - "6379:6379"
