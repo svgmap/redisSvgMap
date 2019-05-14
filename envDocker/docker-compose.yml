@@ -7,7 +7,7 @@ services:
     volumes:
       - "./pythonShared:/data"
     links:
-      - "comp_redishost:redishost"
+      - "comp_redishost:localhost"
     ports:
       - "8080:5000"
   comp_redishost:
