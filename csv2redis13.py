@@ -128,7 +128,7 @@ def registLrMap(lrMap, xyKey, splitedData):
     # print (i,"::",val)
     if (val != ""):
       if csvSchemaType[i] == T_ENUM:  # 列挙型データの統計
-        if pixData[i] == None:
+        if pixData[i] is None:
           pixData[i] = {}
         if (val in pixData[i]):
           pixData[i][val] += 1
@@ -137,7 +137,7 @@ def registLrMap(lrMap, xyKey, splitedData):
       elif csvSchemaType[i] == T_NUMB:  # 数値型データの統計　最大最小・標準偏差とかもあると良いと思うが・・
         if (val != "-"):
           fVal = float(val)
-          if (pixData[i] == None):
+          if (pixData[i] is None):
             pixData[i] = []
             pixData[i].append(fVal)
             pixData[i].append(1)
@@ -151,7 +151,7 @@ def registLrMap(lrMap, xyKey, splitedData):
             elif (pixData[i][3] < fVal):  # maxVal
               pixData[i][3] = fVal
       else:  # 文字列型　あまり意味ない　とりあえず総文字数カウントでもしとくか・・
-        if (pixData[i] == None):
+        if (pixData[i] is None):
           pixData[i] = len(val)
         else:
           pixData[i] += len(val)
@@ -323,7 +323,7 @@ def getBuildAllLowResMapCount():
 def buildAllLowResMap(keys=None):
   # 全LowResMapを一から生成しなおす（元のLowResMapデータがあっても利用せず上書き)
   global r,buildAllLowResMapCount
-  if (keys == None):
+  if (keys is None):
     bkeys = r.keys(ns + "[A-D]*")
     bkeys.sort(key=len)  # 下のレベルのLowResMapから更新して上のレベルに波及させる必要があるのでgeohash長い順ソートする
     keys = []
@@ -472,9 +472,9 @@ def updateLowResMapSub(parentLowResMap, childLowResMap, px0, py0):
 
       parentPixData[len(csvSchemaType)] += childPixData[len(csvSchemaType)]  # 個数
       for i, dType in enumerate(csvSchemaType):
-        if childPixData[i] != None:
+        if childPixData[i] is not None:
           if dType == T_ENUM:  # 列挙型データの統計
-            if parentPixData[i] == None:
+            if parentPixData[i] is None:
               parentPixData[i] = {}
             for key, val in childPixData[i].items():
               if (key in parentPixData[i]):
@@ -482,7 +482,7 @@ def updateLowResMapSub(parentLowResMap, childLowResMap, px0, py0):
               else:
                 parentPixData[i][key] = val
           elif dType == T_NUMB:  # 数値型データの統計
-            if parentPixData[i] == None:
+            if parentPixData[i] is None:
               parentPixData[i] = []
               parentPixData[i].append(childPixData[i][0])
               parentPixData[i].append(childPixData[i][1])
@@ -497,7 +497,7 @@ def updateLowResMapSub(parentLowResMap, childLowResMap, px0, py0):
                 parentPixData[i][3] = childPixData[i][3]
 
           else:  # 文字列・・
-            if parentPixData[i] == None:
+            if parentPixData[i] is None:
               parentPixData[i] = childPixData[i]
             else:
               parentPixData[i] += childPixData[i]
@@ -836,7 +836,7 @@ def saveAllSvgMap(lowResImage=False):
 
 def saveSvgMapTile(geoHash, dtype=None):  # pythonのXML遅くて足かせになったので、この関数は使わなくしました 2019/1/16
   global r
-  if dtype == None:
+  if dtype is None:
     dtype = r.type(ns + geoHash)
   thisZoom = len(geoHash)
   doc, svg = csv2svgmap.create_svgMapDoc()
@@ -961,7 +961,7 @@ def saveSvgMapTileN(
   titleCol = schemaObj.get("titleCol")
   #    print(dtype)
 
-  if geoHash == None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
+  if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
     dtype = b"string"
     lat0 = -180
     lng0 = -180
@@ -972,7 +972,7 @@ def saveSvgMapTileN(
     lat0, lng0, lats, lngs = geoHashToLatLng(geoHash)
     thisZoom = len(geoHash)
 
-  if dtype == None:
+  if dtype is None:
     dtype = r.type(ns + geoHash)
   outStrL.append("<?xml version='1.0' encoding='UTF-8'?>\n<svg property='")
   outStrL.append(",".join(csvSchema))
@@ -1107,11 +1107,11 @@ def saveSvgMapTileN(
       poi = poidata.decode().split(',', -1)
       lat = float(poi[0])
       lng = float(poi[1])
-      del poi[0:2]
       if (titleCol >= 0):
         title = poi[titleCol]
       else:
         title = poi[0]
+      del poi[0:2]
 
       outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.3f},{:.3f})'".format(100 * lng, -100 * lat))
       outStrL.append(" xlink:title='")
@@ -1272,7 +1272,7 @@ def getOneData(row, latCol, lngCol, idCol=-1):
   for i, data in enumerate(row):
     if (i != latCol and i != lngCol):
       if (validateData(data, mi)):
-        meta += data
+        meta += str(data)
       else:
         meta += "-"
       if mi < len(csvSchema) - 1:
@@ -1291,7 +1291,7 @@ def getOneData(row, latCol, lngCol, idCol=-1):
   oneData = {
       "lat": lat,
       "lng": lng,
-      "data": row[latCol] + "," + row[lngCol] + "," + meta,
+      "data": str(row[latCol]) + "," + str(row[lngCol]) + "," + meta,
       "hkey": hkey
   }  # hkeyで実データのハッシュを直に指定 2019/3/13
   return (oneData)
