@@ -126,6 +126,7 @@ function getAttrs(attrs, fillTimeAttr){
 }
 
 function editConf(eparam){
+	console.log("editConf: eparam : ", eparam);
 	var originalData = null;
 	var newData = null;
 	var geoHash = null;
@@ -175,7 +176,7 @@ function editConf(eparam){
 	}
 	var jsonStr = JSON.stringify(qJson);
 	console.log("jsonStr:",jsonStr);
-	console.log({doc:document});
+	// console.log({doc:document});
 	var postURL=redisSvgMapRoot + "/svgmap/" + currentSubLayerHash + "/editPoint";
 	console.log(postURL);
 	doPost(postURL,jsonStr);
@@ -374,7 +375,7 @@ function changeSubLayers(event,numb){
 
 </script>
 <body>
-<h2>RedisPoiServerrAuthoringTools</h2>
+<h2>RedisPoiServerAuthoringTools</h2>
 Sub layer: <select id="subLayersSel"  onchange="changeSubLayers(event)">
 <input type="button" onClick="window.open('redisDatasetBuilder.html','sub','width=1000,height=400');return false;" value="Manage sub layers"/>
 <!--<option value="s2_">default</option>-->

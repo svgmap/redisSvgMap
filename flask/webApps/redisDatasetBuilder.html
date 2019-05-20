@@ -169,16 +169,22 @@ function buildRedisSchema(jsSchema,key){
 	var lngCol = -1;
 	var titleCol = 0; // TBD
 	var idCol = -1;
+	// skip
+	//names.push("latitude");
+	//types.push(T_NUMB);
+	//names.push("longitude");
+	//types.push(T_NUMB);
 	for ( var i = 0 ; i < jsSchema.length ; i++ ){
 		var sname = jsSchema[i].name;
 		var stype =  schemaConv(jsSchema[i].typeName);
-		if ( sname == "latitude"){
+		names.push(sname);
+		types.push(stype);
+		if ( sname == "latitude" ){
 			latCol = i;
-		} else if ( sname == "longitude"){
+		} else if ( sname == "longitude" ){
 			lngCol = i;
-		} else {
-			names.push(sname);
-			types.push(stype);
+		} else if ( sname.toLowerCase().indexOf("title")>=0 || sname.toLowerCase().indexOf("name")>=0 || sname.indexOf("名称")>=0 ){
+			titleCol = i;
 		}
 	}
 	csvSchemaObj = {
