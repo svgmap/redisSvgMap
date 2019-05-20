@@ -1133,7 +1133,7 @@ def saveSvgMapTileN(
       else:
         title = poi[0]
 
-      outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.3f},{:.3f})'".format(100 * lng, -100 * lat))
+      outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.4f},{:.4f})'".format(100 * math.floor(lng*1000000)/1000000, -100 * math.floor(lat*1000000)/1000000))
       outStrL.append(" xlink:title='")
       outStrL.append(xmlEscape(title))
       outStrL.append("' x='0' y='0' content='")
