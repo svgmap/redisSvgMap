@@ -643,11 +643,11 @@ def checkSiblingSizes(keys):
   return (keyDict)
 
 
-def burstQuadPart(dataSizes):
+def burstQuadPart(dataSizes,maxLevel):
   latCol = schemaObj.get("latCol")
   lngCol = schemaObj.get("lngCol")
   for key, count in dataSizes.items():
-    if count >= listLimit:
+    if (count >= listLimit and len(key) < maxLevel): # fix maxLevel limitation 2019.5.22
       lat0, lng0, lats, lngs = geoHashToLatLng(key)
       quadPart(key, lat0, lng0, lats, lngs, latCol, lngCol)
 
@@ -678,7 +678,7 @@ def burstRegistData(registDataList, maxLevel):
   # それぞれのタイルのデータの個数を調査する
   dataSizes = checkSizes(keys)  # dataSizes: dict [geoHash:size]
   # 一連の登録がすんだら、タイル再構築(quadTreeTiling)を行う
-  burstQuadPart(dataSizes)
+  burstQuadPart(dataSizes, maxLevel)
 
   # print ("dataSizes:",dataSizes)
   return ({"success": len(ans), "keys": keys})
