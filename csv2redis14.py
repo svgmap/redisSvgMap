@@ -11,6 +11,7 @@ from PIL import Image
 import math
 import numpy as np
 import hashlib
+import lib.svgmapContainer as sc
 
 # csvを読み込み、redis上に、quadtreeのタイル番号をハッシュキーとした非等分quadtreeデータ構造を構築する
 # Programmed by Satoru Takagi
@@ -89,6 +90,7 @@ lowResIsBitImage = True
 
 UseRedisHash = True  # これはもはやTrue固定です　あとでFalseケースの実装を外します 2019/3/13
 
+ 
 
 def registLrMap(lrMap, xyKey, splitedData):
   # 低解像度統計データを構築・登録する
@@ -972,7 +974,7 @@ def saveSvgMapTileN(
   outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
 
   global r
-
+  global poi_color,poi_index,poi_size
   print("saveSvgMapTileN: schemaObj:", schemaObj)
 
   latCol = schemaObj.get("latCol")
@@ -981,6 +983,13 @@ def saveSvgMapTileN(
   csvSchemaType = schemaObj.get("type")
   titleCol = schemaObj.get("titleCol")
   #    print(dtype)
+  print(csvSchema)
+  print([str] * len(csvSchema))
+  svgc_raw = sc.SvgmapContainer(csvSchema, [str] * len(csvSchema))
+  svgc_raw.regist_size(poi_size)
+  svgc_raw.regist_flag(poi_color)
+  svgc_raw.color_column_index = poi_index
+
 
   if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
     dtype = b"string"
@@ -995,6 +1004,7 @@ def saveSvgMapTileN(
 
   if dtype is None:
     dtype = r.type(ns + geoHash)
+  # 下記書き換え
   outStrL.append("<?xml version='1.0' encoding='UTF-8'?>\n<svg property='")
   outStrL.append(getCsvStrExclLatLng(csvSchema, latCol, lngCol))
   outStrL.append("' data-property-type='")
@@ -1132,22 +1142,25 @@ def saveSvgMapTileN(
         title = poi[titleCol]
       else:
         title = poi[0]
-
+      svgc_raw.add_content(title,poi[latCol], poi[lngCol], poi)
+      # ----以下書き換え-------
       outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.4f},{:.4f})'".format(100 * math.floor(lng*1000000)/1000000, -100 * math.floor(lat*1000000)/1000000))
       outStrL.append(" xlink:title='")
       outStrL.append(xmlEscape(title))
       outStrL.append("' x='0' y='0' content='")
       outStrL.append(xmlEscape(getCsvStrExclLatLng(poi, latCol, lngCol)))
       outStrL.append("'/>\n")
+      # -------------------------
   outStrL.append("</svg>\n")
+  print(svgc_raw.output_str_to_container())
 
   if (onMemoryOutput):  # 文字列として返却するだけのオプション
-    return "".join(outStrL)
+    #return "".join(outStrL)
+    return svgc_raw.output_str_to_container()
   else:
     with open(targetDir + svgFileNameHd + geoHash + ".svg", mode='w', encoding='utf-8') as f:
       f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
       # f.flush() # ひとまずファイルの書き出しはシステムお任せにしましょう・・
-
 
 def xmlEscape(str):
   ans = str.replace("'", "&apos;")
@@ -1368,6 +1381,29 @@ def listSubLayers():
   # print(r.hgetall("dataSet"))
   return (r.hgetall("dataSet"))
 
+poi_size = []
+poi_color = []
+poi_index = 0
+def regist_poi_size(_size:list):
+  global poi_size
+  poi_size = _size
+
+def regist_poi_color(_color: list):
+  global poi_color
+  poi_color = _color
+
+def regist_poi_index(_index: int):
+  global poi_index
+  poi_index = _index
+
+def poi_init(_size: list, _color: list, _index: int):
+  '''
+  POIの実データ生成時のイメージの登録
+  '''
+  regist_poi_size(_size)
+  regist_poi_color(_color)
+  regist_poi_index(_index)
+
 
 def main():
   global r, targetDir, lowResIsBitImage, schemaObj
@@ -1383,6 +1419,11 @@ def main():
   parser.add_argument("--debug", action='store_true')
   parser.add_argument("--saveallmap", action='store_true')
   parser.add_argument("--ns")
+  # 色分けに関するオプション追加 2019.06.05 Yutaka Sakiura
+  parser.add_argument("--imagecolumn")
+  parser.add_argument("--opacity")
+  parser.add_argument("--image")
+  parser.add_argument("--size")
 
   dbns = "s2_"
 
