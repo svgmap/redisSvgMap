@@ -75,7 +75,7 @@ class SvgmapContainer:
     def regist_defs(self, _colors: list):
         body = Tag("defs")
         for color in _colors:
-            print(color)
+            # print(color)
             g = Tag("g")
             g.id = color["flag"]
             if color["color"][0] == "#":
@@ -86,7 +86,7 @@ class SvgmapContainer:
                 # case image
                 tag = Tag("image")
                 tag.__setattr__("xlink:href", color["color"])
-            print("poi size : ", *self.__poi_size)
+            # print("poi size : ", *self.__poi_size)
             tag.x, tag.y, tag.width, tag.height = self.__poi_size
             g.append_child(tag)
             body.append_child(g)
@@ -227,7 +227,7 @@ if __name__ == "__main__":
 
         t.append_child(c)
 
-    print(t.output_str())
+    # print(t.output_str())
 
     svgc = SvgmapContainer(
         ["id", "name", "area", "address", "flg"], [str, str, str, str, str]
@@ -249,6 +249,6 @@ if __name__ == "__main__":
     # print(svgc.defs)
 
     svgc.add_content("poi1", "35.000", "134", ["0", "poi1", "tokyo", "東京都新宿区", "f2"])
-    print(svgc.contents)
-    print(svgc.output_str_to_container())
+    # print(svgc.contents)
+    # print(svgc.output_str_to_container())
     # svgc.save_to_container_file("/tmp/sample.svg")

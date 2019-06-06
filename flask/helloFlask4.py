@@ -54,7 +54,7 @@ dbnsDefault = "s2_"  # use csv2redis13 for DB namespace
 # csv2redis 実データ用 Config
 #
 # --------------------------------------------------------------
-poiSize = ["0", "0", "3", "3"]  # poiSize = [x, y, width, heigh]
+poiSize = ["0", "0", "5", "5"]  # poiSize = [x, y, width, heigh]
 poiColor = [
     {"flag": "hokkaido", "color": "#FF0000"},
     {"flag": "aomori", "color": "#c00000"},
