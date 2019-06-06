@@ -11,7 +11,7 @@ from PIL import Image
 import math
 import numpy as np
 import hashlib
-import lib.svgmapContainer as sc
+from  lib.svgmapContainer import SvgmapContainer, Tag
 
 # csvを読み込み、redis上に、quadtreeのタイル番号をハッシュキーとした非等分quadtreeデータ構造を構築する
 # Programmed by Satoru Takagi
@@ -983,12 +983,12 @@ def saveSvgMapTileN(
   csvSchemaType = schemaObj.get("type")
   titleCol = schemaObj.get("titleCol")
   #    print(dtype)
-  print(csvSchema)
-  print([str] * len(csvSchema))
-  svgc_raw = sc.SvgmapContainer(csvSchema, [str] * len(csvSchema))
-  svgc_raw.regist_size(poi_size)
-  svgc_raw.regist_flag(poi_color)
-  svgc_raw.color_column_index = poi_index
+  #print(csvSchema)
+  #print([str] * len(csvSchema))
+  svgc = SvgmapContainer(csvSchema, [str] * len(csvSchema))
+  svgc.regist_size(poi_size)
+  svgc.regist_defs(poi_color)
+  svgc.color_column_index = poi_index
 
 
   if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
@@ -1004,21 +1004,13 @@ def saveSvgMapTileN(
 
   if dtype is None:
     dtype = r.type(ns + geoHash)
-  # 下記書き換え
-  outStrL.append("<?xml version='1.0' encoding='UTF-8'?>\n<svg property='")
-  outStrL.append(getCsvStrExclLatLng(csvSchema, latCol, lngCol))
-  outStrL.append("' data-property-type='")
-  outStrL.append(getCsvStrExclLatLng(getSchemaTypeStrArray(csvSchemaType), latCol, lngCol))
-  outStrL.append(
-      "' viewBox='9000,-5500,10000,10000' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>\n"
-  )
-  outStrL.append("<globalCoordinateSystem srsName='http://purl.org/crs/84' transform='matrix(100,0,0,-100,0,0)'/>\n")
-
+  
   if dtype == b"string":  # そのタイルはオーバーフローしている実データがないlowRes pickleタイル
     if lats < 360:  # レベル0のタイル(レイヤールートコンテナ)じゃない場合はそのレベルの低解像度タイルを入れる
       pixW = 100 * lngs / lowresMapSize
       pixH = 100 * lats / lowresMapSize
-      outStrL.append("<g fill='blue' visibleMaxZoom='{:.3f}'>\n".format((topVisibleMinZoom * pow(2, thisZoom - 1))))
+      g = Tag('g')
+      g.fill , g.visibleMaxZoom = ('blue', topVisibleMinZoom * pow(2, thisZoom - 1),)
 
       # bitImage出力 http://d.hatena.ne.jp/white_wheels/20100322/p1
       if lowResImage:
@@ -1049,18 +1041,12 @@ def saveSvgMapTileN(
               lng = lng0 + lngs * (x / lowresMapSize)
               lat = lat0 + lats * (y / lowresMapSize)
               title = xyKey
-              outStrL.append(' <rect x="')
-              outStrL.append('{:.3f}'.format(100 * lng))
-              outStrL.append('" y="')
-              outStrL.append('{:.3f}'.format(-100 * lat - pixH))
-              outStrL.append('" width="')
-              outStrL.append('{:.3f}'.format(pixW))
-              outStrL.append('" height="')
-              outStrL.append('{:.3f}'.format(pixH))
-              outStrL.append('" content="totalPois:')
-              outStrL.append(str(data[len(csvSchemaType)]))
-              outStrL.append('" />\n')
-
+              item = Tag('rect')
+              item.x, item.y, item.width, item.height = (100 * lng, -100 * lat - pixH, pixW, pixH)
+              item.content = 'totalPois:%s' % len(csvSchemaType)
+              g.append_child(item)
+      print(g)
+      
       if (lowResImage):  # 作ったpngを参照するimageタグを作る
         if onMemoryOutput and not returnBitImage:
           pass  # ただし、オンメモリ生成でビットイメージ要求がない場合はビットイメージ生成必要ない
@@ -1075,13 +1061,12 @@ def saveSvgMapTileN(
             return (img_io)  # ちょっと強引だがここで出力して終了
           if not onMemoryOutput:
             img.save(targetDir + svgFileNameHd + geoHash + ".png")
-        outStrL.append(" <image style='image-rendering:pixelated' xlink:href='")
-        outStrL.append(svgFileNameHd + geoHash + ".png")
-        outStrL.append("' x='{:.3f}".format(100 * (lng0)))
-        outStrL.append("' y='{:.3f}".format(-100 * (lat0 + lats)))
-        outStrL.append("' width='{:.3f}".format(100 * lngs))
-        outStrL.append("' height='{:.3f}'/>\n".format(100 * lats))
-
+        image = Tag("image")
+        image.style = 'image-rendering:pixelated'
+        image.__setattr__("xlink:href", svgFileNameHd + geoHash + ".png")
+        image.x, image.y, image.width, image.height = (100 * (lng0), -100 * (lat0 + lats), 100 * lngs, 100 * lats)
+        g.append_child(image)
+      svgc.add_tag(g)
     pipe = r.pipeline()  # パイプ使って少し高速化できたか？
     pipe.exists(ns + geoHash + "A")
     pipe.exists(ns + geoHash + "B")
@@ -1089,9 +1074,11 @@ def saveSvgMapTileN(
     pipe.exists(ns + geoHash + "D")
     ceFlg = pipe.execute()
 
+    g = Tag('g')
+
     if lats < 360:
-      outStrL.append("</g>\n<g fill='blue' visibleMinZoom='{:.3f}'>\n".format(
-          (topVisibleMinZoom * pow(2, thisZoom - 1))))
+      g.fill = 'blue'
+      g.visibleMinZoom = topVisibleMinZoom * pow(2, thisZoom - 1)
     else:  # レベル0のレイヤルートコンテナの場合
       outStrL.append(
           "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
@@ -1103,8 +1090,8 @@ def saveSvgMapTileN(
       childGeoHash = geoHash + cN
       #      print("EXISTS?", cN,exs)
       if (exs):
-        outStrL.append(" <animation xlink:href='")
-        outStrL.append(svgFileNameHd + childGeoHash + ".svg")
+        ani = Tag("animation")
+        ani.__setattr__("xlink:href", svgFileNameHd + childGeoHash + ".svg")
         lat_shift = 0
         lng_shift = 0
         if cN == "B":
@@ -1114,19 +1101,17 @@ def saveSvgMapTileN(
         elif cN == "D":
           lng_shift = lngs / 2
           lat_shift = lats / 2
-
-        outStrL.append("' x='{:.3f}".format(100 * (lng0 + lng_shift)))
-        outStrL.append("' y='{:.3f}".format(-100 * (lat0 + lat_shift + lats / 2)))
         # 緯度・lats/2の足し方ちょっと怪しい・・・
-        outStrL.append("' width='{:.3f}".format(100 * lngs / 2))
-        outStrL.append("' height='{:.3f}'/>\n".format(100 * lats / 2))
-    outStrL.append("</g>\n")
+        ani.x, ani.y, ani.width, ani.height = (100 * (lng0 + lng_shift), -100 * (lat0 + lat_shift + lats / 2), 100 * lngs / 2, 100 * lats / 2)
+        g.append_child(ani)
+    svgc.add_tag(g)
 
   else:  # 実データ
-    outStrL.append(
-        "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
-    )
 
+    # defs 
+    defs = Tag("defs")
+
+    # raw data
     if dtype == b"list":
       src = r.lrange(ns + geoHash, 0, -1)  # 全POI取得
     else:
@@ -1142,21 +1127,13 @@ def saveSvgMapTileN(
         title = poi[titleCol]
       else:
         title = poi[0]
-      svgc_raw.add_content(title,poi[latCol], poi[lngCol], poi)
-      # ----以下書き換え-------
-      outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.4f},{:.4f})'".format(100 * math.floor(lng*1000000)/1000000, -100 * math.floor(lat*1000000)/1000000))
-      outStrL.append(" xlink:title='")
-      outStrL.append(xmlEscape(title))
-      outStrL.append("' x='0' y='0' content='")
-      outStrL.append(xmlEscape(getCsvStrExclLatLng(poi, latCol, lngCol)))
-      outStrL.append("'/>\n")
-      # -------------------------
-  outStrL.append("</svg>\n")
-  print(svgc_raw.output_str_to_container())
+      svgc.add_content(title,poi[latCol], poi[lngCol], poi)
+
+  #print(svgc.output_str_to_container())
 
   if (onMemoryOutput):  # 文字列として返却するだけのオプション
     #return "".join(outStrL)
-    return svgc_raw.output_str_to_container()
+    return svgc.output_str_to_container()
   else:
     with open(targetDir + svgFileNameHd + geoHash + ".svg", mode='w', encoding='utf-8') as f:
       f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ

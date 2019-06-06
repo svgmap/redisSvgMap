@@ -56,9 +56,21 @@ dbnsDefault = "s2_"  # use csv2redis13 for DB namespace
 # --------------------------------------------------------------
 poiSize = ["0", "0", "3", "3"]  # poiSize = [x, y, width, heigh]
 poiColor = [
-    {"flg": "kanagawa", "color": "#FF0000"},
-    {"flg": "chiba", "color": "#FFFF00"},
-    {"flg": "shizuoka", "color": "#0000FF"},
+    {"flag": "hokkaido", "color": "#FF0000"},
+    {"flag": "aomori", "color": "#c00000"},
+    {"flag": "akita", "color": "#cc0000"},
+    {"flag": "miyagi", "color": "#c0c000"},
+    {"flag": "morioka", "color": "#c0cc00"},
+    {"flag": "ibaraki", "color": "#cccc00"},
+    {"flag": "tochigi", "color": "#ccFF00"},
+    {"flag": "gunma", "color": "#ffc000"},
+    {"flag": "nagano", "color": "#ffcc00"},
+    {"flag": "yamanashi", "color": "#ffff00"},
+    {"flag": "kanagawa", "color": "#c0ff00"},
+    {"flag": "shizuoka", "color": "#0000FF"},
+    {"flag": "tokyo", "color": "#ffcc00"},
+    {"flag": "chiba", "color": "#cc00FF"},
+    {"flag": "saitama", "color": "#c0c0c0"},
 ]  # poiColor = f1:#FF0000,f2:#FFFF00,f3:#0000FF -> split(",") -> split(":")
 colorColumn = 8
 # --------------------------------------------------------------

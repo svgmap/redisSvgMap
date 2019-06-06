@@ -17,8 +17,20 @@ class SvgmapContainer:
             __data_property_name:list
             __data_property_type:list
             __color_column_index:int
-        """
 
+            # ----- header ----
+            <?xml ...?>
+            <svg ....>
+            <globalCoordinateSystem...>
+            # ------ body -------
+            <defs>...<defs>     <- [0]
+            <rect ....>         <- [1]
+            # ------ footer ------
+            </svg>
+
+
+        """
+        self.__body = []
         self.__output = []
         self.__header = []
         self.__footer = []
@@ -46,11 +58,10 @@ class SvgmapContainer:
 
     # defs tag @ svg
     @property
-    def defs(self) -> dict:
-        out_str = "<defs>\n"
-        for d in self.__definitions:
-            out_str += "  " + d.output_str()
-        out_str += "</defs>\n"
+    def defs(self) -> str:
+        out_str = ""
+        for b in self.__body:
+            out_str += b.output_str() + "\n"
         return out_str
 
     # イメージサイズの登録
@@ -61,11 +72,25 @@ class SvgmapContainer:
         self.__poi_size = _size
 
     # 色フラグの登録
-    def regist_flag(self, _colors: list):
+    def regist_defs(self, _colors: list):
+        body = Tag("defs")
         for color in _colors:
-            tag = Tag(color["flg"], color["color"])
-            tag.set_size(*self.__poi_size)
-            self.__definitions.append(tag)
+            print(color)
+            g = Tag("g")
+            g.id = color["flag"]
+            if color["color"][0] == "#":
+                # case color code
+                tag = Tag("rect")
+                tag.fill = color["color"]
+            else:
+                # case image
+                tag = Tag("image")
+                tag.__setattr__("xlink:href", color["color"])
+            print("poi size : ", *self.__poi_size)
+            tag.x, tag.y, tag.width, tag.height = self.__poi_size
+            g.append_child(tag)
+            body.append_child(g)
+        self.__body.append(body)
 
     # 全データ削除
     def clear(self) -> None:
@@ -102,7 +127,7 @@ class SvgmapContainer:
             pass
         else:
             #
-            print(self.__data_property_type)
+            # print(self.__data_property_type)
             if self.__data_property_type[self.__color_column_index] is str:
                 self.__container.append(
                     {"title": title, "lat": lat, "lng": lng, "metadatas": metadatas}
@@ -114,6 +139,10 @@ class SvgmapContainer:
             #
             if self.__data_property_type[self.__color_column_index] is float:
                 pass
+
+    def add_tag(self, _tag) -> None:
+        self.__body.append(_tag)
+        return None
 
     def convert_raw_to_svgmap_tag(self) -> str:
         content = ""
@@ -160,58 +189,51 @@ class SvgmapContainer:
 
 
 class Tag:
-    def __init__(self, _id: str, _color: str):
-        self.__id = _id  #
-        self.__tag = ""  # tag name ex.) {image | rect | circle}
-        self.__x = 0
-        self.__y = 0
-        self.__width = 0.3  # default : 0.3
-        self.__height = 0.3  # default : 0.3
-        self.__href = ""
-        self.__title = ""
-        self.__content = ""
-        self.__fill = "#0000FF"  # default : #0000FF (Blue)
-        self.__opacity = 0.7  # default : 0.7
-        # check color code
-        if "#" in _color:
-            self.__tag = "rect"
-            self.__fill = _color
-        else:
-            self.__tag = "image"
-            self.__href = _color
+    def __init__(self, _name: str):
+        self.__name = _name  # tag name
+        self.__child = []
 
-    def set_size(self, _x, _y, _w, _h):
-        self.__x = _x
-        self.__y = _y
-        self.__width = _w
-        self.__height = _h
+    def append_child(self, _tag) -> None:
+        self.__child.append(_tag)
 
     def output_str(self) -> str:
-        str_out = '<g id="%s" opacity="%s">' % (self.__id, str(self.__opacity))
-
-        str_out += "<%s x='%s' y='%s' width='%s' height='%s' " % (
-            self.__tag,
-            self.__x,
-            self.__y,
-            self.__width,
-            self.__height,
-        )
-        if self.__tag == "rect":
-            str_out += "fill='%s'" % (self.__fill)
+        str_out = "<%s" % self.__name
+        # set attribute
+        for attr_key, attr_value in self.__dict__.items():
+            if not (attr_key[0] == "_"):
+                # print(attr_key, " / ", attr_value)
+                str_out += ' %s="%s"' % (attr_key, attr_value)
+        # set child
+        if len(self.__child) >= 1:
+            # 子要素(child)が入っていれば閉じタグをつける
+            str_out += ">\n"
+            for c in self.__child:
+                str_out += c.output_str() + "\n"
+            str_out += "</%s>" % self.__name
         else:
-            str_out += "xlink:href='%s'" % (self.__href)
-
-        str_out += "/></g>\n"
+            str_out += "/>"
         return str_out
 
 
 if __name__ == "__main__":
+    t = Tag("g")
+    for itm in ["img", "animation", "rect", "circle", "animation"]:
+        c = Tag(itm)
+        c.x = "0"
+        c.y = "0"
+        c.width = "5"
+        c.height = "5"
+        c.__setattr__("xlink:href", "aaa.png")  # :が入るメタデータについては__setattr__で記載する
+
+        t.append_child(c)
+
+    print(t.output_str())
 
     svgc = SvgmapContainer(
         ["id", "name", "area", "address", "flg"], [str, str, str, str, str]
     )
 
-    poiSize = ["0", "0", "1", "1"]  # poiSize = [x, y, width, heigh]
+    poiSize = ["0", "0", "5", "5"]  # poiSize = [x, y, width, heigh]
     poiColor = [
         {"flg": "f1", "color": "#FF0000"},
         {"flg": "f2", "color": "#FFFF00"},
@@ -220,7 +242,7 @@ if __name__ == "__main__":
     colorColumn = 4
 
     svgc.regist_size(poiSize)
-    svgc.regist_flag(poiColor)
+    svgc.regist_defs(poiColor)
     svgc.color_column_index = colorColumn
 
     # print("svgmap color index : ", svgc.color_column_index)
@@ -230,4 +252,3 @@ if __name__ == "__main__":
     print(svgc.contents)
     print(svgc.output_str_to_container())
     # svgc.save_to_container_file("/tmp/sample.svg")
-
