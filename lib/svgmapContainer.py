@@ -31,11 +31,9 @@ class SvgmapContainer:
 
         """
         self.__body = []
-        self.__output = []
         self.__header = []
         self.__footer = []
         self.__container = []
-        self.__groups = {}
         self.__poi_size = []
 
         self.__definitions = []
@@ -120,7 +118,7 @@ class SvgmapContainer:
         """
         POIを登録する関数
             Input
-                metadatas:メタデータが入っているリスト
+                metadatas:メタデータのリスト
         """
         if self.__color_column_index is None:
             # デフォルトの色を使用してプロット（既存と同じ青でいいかなぁ）
