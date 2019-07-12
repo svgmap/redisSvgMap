@@ -11,7 +11,7 @@ from PIL import Image
 import math
 import numpy as np
 import hashlib
-from  lib.svgmapContainer import SvgmapContainer, Tag
+from lib.svgmapContainer import SvgmapContainer, Tag
 
 # csvを読み込み、redis上に、quadtreeのタイル番号をハッシュキーとした非等分quadtreeデータ構造を構築する
 # Programmed by Satoru Takagi
@@ -90,7 +90,6 @@ lowResIsBitImage = True
 
 UseRedisHash = True  # これはもはやTrue固定です　あとでFalseケースの実装を外します 2019/3/13
 
- 
 
 def registLrMap(lrMap, xyKey, splitedData):
   # 低解像度統計データを構築・登録する
@@ -200,9 +199,7 @@ def geoHashToLatLng(hash):
       lng += lngs
     lats = lats / 2
     lngs = lngs / 2
-
-
-#  print(hash,lat,lng,lats,lngs)
+  #  print(hash,lat,lng,lats,lngs)
   return lat, lng, 2 * lats, 2 * lngs
 
 
@@ -570,9 +567,7 @@ def investigateKeys(registDataList, maxLevel):  # 高性能化の試行
 
   for j in range(len(keys)):  # :を取り除く
     keys[j] = (keys[j])[0:-1]
-
-
-#  print (keys)
+  #  print (keys)
   return keys
 
 
@@ -645,11 +640,11 @@ def checkSiblingSizes(keys):
   return (keyDict)
 
 
-def burstQuadPart(dataSizes,maxLevel):
+def burstQuadPart(dataSizes, maxLevel):
   latCol = schemaObj.get("latCol")
   lngCol = schemaObj.get("lngCol")
   for key, count in dataSizes.items():
-    if (count >= listLimit and len(key) < maxLevel): # fix maxLevel limitation 2019.5.22
+    if (count >= listLimit and len(key) < maxLevel):  # fix maxLevel limitation 2019.5.22
       lat0, lng0, lats, lngs = geoHashToLatLng(key)
       quadPart(key, lat0, lng0, lats, lngs, latCol, lngCol)
 
@@ -733,7 +728,7 @@ def registOneData(oneData, maxLevel):
           break
         else:
           # ちょうどオーバーフローしたところでは、下の階層を作ってまずは分割（ループは終わらないのでその次のループで実際に下の階層にデータをストアする
-          quadPart(ans, lat0, lng0, lats, lngs)
+          quadPart(ans, lat0, lng0, lats, lngs, None, None)
       else:  # Noneすなわちキーが存在しない時は追加
         #        r.rpush(ans, data)
         break
@@ -974,7 +969,7 @@ def saveSvgMapTileN(
   outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
 
   global r
-  global poi_color,poi_index,poi_size
+  global poi_color, poi_index, poi_size
   print("saveSvgMapTileN: schemaObj:", schemaObj)
 
   latCol = schemaObj.get("latCol")
@@ -990,7 +985,6 @@ def saveSvgMapTileN(
   svgc.regist_defs(poi_color)
   svgc.color_column_index = poi_index
 
-
   if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
     dtype = b"string"
     lat0 = -180
@@ -1004,13 +998,16 @@ def saveSvgMapTileN(
 
   if dtype is None:
     dtype = r.type(ns + geoHash)
-  
+
   if dtype == b"string":  # そのタイルはオーバーフローしている実データがないlowRes pickleタイル
     if lats < 360:  # レベル0のタイル(レイヤールートコンテナ)じゃない場合はそのレベルの低解像度タイルを入れる
       pixW = 100 * lngs / lowresMapSize
       pixH = 100 * lats / lowresMapSize
       g = Tag('g')
-      g.fill , g.visibleMaxZoom = ('blue', topVisibleMinZoom * pow(2, thisZoom - 1),)
+      g.fill, g.visibleMaxZoom = (
+          'blue',
+          topVisibleMinZoom * pow(2, thisZoom - 1),
+      )
 
       # bitImage出力 http://d.hatena.ne.jp/white_wheels/20100322/p1
       if lowResImage:
@@ -1046,7 +1043,7 @@ def saveSvgMapTileN(
               item.content = 'totalPois:%s' % len(csvSchemaType)
               g.append_child(item)
       print(g)
-      
+
       if (lowResImage):  # 作ったpngを参照するimageタグを作る
         if onMemoryOutput and not returnBitImage:
           pass  # ただし、オンメモリ生成でビットイメージ要求がない場合はビットイメージ生成必要ない
@@ -1102,13 +1099,14 @@ def saveSvgMapTileN(
           lng_shift = lngs / 2
           lat_shift = lats / 2
         # 緯度・lats/2の足し方ちょっと怪しい・・・
-        ani.x, ani.y, ani.width, ani.height = (100 * (lng0 + lng_shift), -100 * (lat0 + lat_shift + lats / 2), 100 * lngs / 2, 100 * lats / 2)
+        ani.x, ani.y, ani.width, ani.height = (100 * (lng0 + lng_shift), -100 * (lat0 + lat_shift + lats / 2),
+                                               100 * lngs / 2, 100 * lats / 2)
         g.append_child(ani)
     svgc.add_tag(g)
 
   else:  # 実データ
 
-    # defs 
+    # defs
     defs = Tag("defs")
 
     # raw data
@@ -1127,7 +1125,7 @@ def saveSvgMapTileN(
         title = poi[titleCol]
       else:
         title = poi[0]
-      svgc.add_content(title,poi[latCol], poi[lngCol], poi)
+      svgc.add_content(title, poi[latCol], poi[lngCol], poi)
 
   #print(svgc.output_str_to_container())
 
@@ -1138,6 +1136,7 @@ def saveSvgMapTileN(
     with open(targetDir + svgFileNameHd + geoHash + ".svg", mode='w', encoding='utf-8') as f:
       f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
       # f.flush() # ひとまずファイルの書き出しはシステムお任せにしましょう・・
+
 
 def xmlEscape(str):
   ans = str.replace("'", "&apos;")
@@ -1358,20 +1357,26 @@ def listSubLayers():
   # print(r.hgetall("dataSet"))
   return (r.hgetall("dataSet"))
 
+
 poi_size = []
 poi_color = []
 poi_index = 0
-def regist_poi_size(_size:list):
+
+
+def regist_poi_size(_size: list):
   global poi_size
   poi_size = _size
+
 
 def regist_poi_color(_color: list):
   global poi_color
   poi_color = _color
 
+
 def regist_poi_index(_index: int):
   global poi_index
   poi_index = _index
+
 
 def poi_init(_size: list, _color: list, _index: int):
   '''
