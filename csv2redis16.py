@@ -6,7 +6,7 @@ from xml.dom import minidom
 import argparse
 import redis
 import pickle
-import csv2svgmap
+# import csv2svgmap
 from PIL import Image
 import math
 import numpy as np

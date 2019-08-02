@@ -21,6 +21,7 @@
 # https://qiita.com/redshoga/items/60db7285a573a5e87eb6 単にファイルを返すとか
 
 from flask import Flask, request, send_from_directory, Response, send_file
+from flask_cors import CORS
 import urllib.parse
 import sys, os
 import json
@@ -34,6 +35,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from csv2redis16 import Csv2redisClass  # 上で上のディレクトリをappendしてるのでimportできる
 
 app = Flask(__name__)
+CORS(app)
 
 now_registering = False  # POIの登録中を示すフラグ（登録をシングルに制限）
 
@@ -252,11 +254,11 @@ def getData(poiDatas, latCol, lngCol):
     else:
       splitMeta = meta.split(',', -1)
       if (latCol > lngCol):
-        splitMeta.insert(poiData["longitude"], lngCol)
-        splitMeta.insert(poiData["latitude"], latCol)
+        splitMeta.insert(lngCol, str(poiData["longitude"]))
+        splitMeta.insert(latCol, str(poiData["latitude"]))
       else:
-        splitMeta.insert(poiData["latitude"], latCol)
-        splitMeta.insert(poiData["longitude"], lngCol)
+        splitMeta.insert(latCol, str(poiData["latitude"]))
+        splitMeta.insert(lngCol, str(poiData["longitude"]))
       oneData = {"lat": lat, "lng": lng, "data": ",".join(splitMeta), "hkey": hkey}
 
     out.append(oneData)
