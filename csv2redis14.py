@@ -1165,8 +1165,12 @@ def init(redisNs="svgMap:"):
   global r, schemaObj, ns
 
   ns = redisNs
+  if (isinstance(r, redis.Redis)):
+    print("Skip redis gen")
+    pass
+  else:
+    r = redis.Redis(host='localhost', port=6379, db=0)
 
-  r = redis.Redis(host='localhost', port=6379, db=0)
   if (len(schemaObj.get("schema")) == 0 or schemaObj.get("namespace") != ns):
     if r.exists(ns + "schema"):
       schemaObj = pickle.loads(r.get(ns + "schema"))

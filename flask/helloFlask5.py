@@ -21,7 +21,6 @@
 # https://qiita.com/redshoga/items/60db7285a573a5e87eb6 単にファイルを返すとか
 
 from flask import Flask, request, send_from_directory, Response, send_file
-from flask_cors import CORS
 import urllib.parse
 import sys, os
 import json
@@ -32,11 +31,9 @@ from collections import OrderedDict
 import threading
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import csv2redis14 as csv2redis  # 上で上のディレクトリをappendしてるのでimportできる
-import time
+from csv2redis16 import Csv2redisClass  # 上で上のディレクトリをappendしてるのでimportできる
 
 app = Flask(__name__)
-CORS(app)
 
 now_registering = False  # POIの登録中を示すフラグ（登録をシングルに制限）
 
@@ -86,9 +83,10 @@ class redisRegistThread(threading.Thread):
     self.progress = "INIT"
     self.jsStr = ""
     self.dbns = dsHash
-    csv2redisR.init(dsHash)
-    self.latCol = csv2redis.schemaObj.get("latCol")
-    self.lngCol = csv2redis.schemaObj.get("lngCol")
+    self.csv2redis = Csv2redisClass()
+    self.csv2redis.init(self.dbns)
+    self.latCol = self.csv2redis.schemaObj.get("latCol")
+    self.lngCol = self.csv2redis.schemaObj.get("lngCol")
 
   def stop(self):
     self.stop_event.set()
@@ -99,27 +97,27 @@ class redisRegistThread(threading.Thread):
     jsData = json.loads(self.jsStr)
     # print("json:", jsData, file=sys.stderr)
     geoHashes = set()
-    csv2redis.init(self.dbns)
+    #    self.csv2redis.init(self.dbns)
     if jsData["action"] == "MODIFY":
       print("MODIFY: start : dbNamespace:", self.dbns, file=sys.stderr)
       originPois = getData(jsData["from"], self.latCol, self.lngCol)
       changeToPois = getData(jsData["to"], self.latCol, self.lngCol)
       count = 0
       for originPoi in originPois:
-        ret = csv2redis.deleteData((originPoi), csv2redis.maxLevel)
+        ret = self.csv2redis.deleteData((originPoi), self.csv2redis.maxLevel)
         geoHashes.update(ret["keys"])
         self.progress = "S1_" + str(count) + "/" + str(len(originPois))
         count = count + 1
-      ret = csv2redis.flushDeleteData(csv2redis.maxLevel)
+      ret = self.csv2redis.flushDeleteData(self.csv2redis.maxLevel)
       geoHashes.update(ret["keys"])
       print("Step1 DELETE: end : geoHashes:", geoHashes, file=sys.stderr)
       count = 0
       for changeToPoi in changeToPois:
-        ret = csv2redis.registData((changeToPoi), csv2redis.maxLevel)
+        ret = self.csv2redis.registData((changeToPoi), self.csv2redis.maxLevel)
         geoHashes.update(ret["keys"])
         self.progress = "S2_" + str(count) + "/" + str(len(changeToPois))
         count = count + 1
-      ret = csv2redis.flushRegistData(csv2redis.maxLevel)
+      ret = self.csv2redis.flushRegistData(self.csv2redis.maxLevel)
       geoHashes.update(ret["keys"])
       print("Step2 ADD: end : geoHashes:", geoHashes, file=sys.stderr)
 
@@ -128,11 +126,11 @@ class redisRegistThread(threading.Thread):
       print("ADD: start : dbns: ", self.dbns, file=sys.stderr)
       count = 0
       for addPoi in addPois:
-        ret = csv2redis.registData((addPoi), csv2redis.maxLevel)
+        ret = self.csv2redis.registData((addPoi), self.csv2redis.maxLevel)
         geoHashes.update(ret["keys"])
         self.progress = "S1_" + str(count) + "/" + str(len(addPois))
         count = count + 1
-      ret = csv2redis.flushRegistData(csv2redis.maxLevel)
+      ret = self.csv2redis.flushRegistData(self.csv2redis.maxLevel)
       print("registKeys:", ret)
       geoHashes.update(ret["keys"])
       print("ADD: update lrmap")
@@ -142,17 +140,17 @@ class redisRegistThread(threading.Thread):
       print("DELETE: start : dbns: ", self.dbns, delPois, file=sys.stderr)
       count = 0
       for delPoi in delPois:
-        ret = csv2redis.deleteData((delPoi), csv2redis.maxLevel)
+        ret = self.csv2redis.deleteData((delPoi), self.csv2redis.maxLevel)
         geoHashes.update(ret["keys"])
         self.progress = "S1_" + str(count) + "/" + str(len(delPois))
         count = count + 1
-      ret = csv2redis.flushDeleteData(csv2redis.maxLevel)
+      ret = self.csv2redis.flushDeleteData(self.csv2redis.maxLevel)
       geoHashes.update(ret["keys"])
       print("DELETE: update lrmap")
       print("DELETE: end : geoHashes:", geoHashes, file=sys.stderr)
     self.progress = "S3_"
     allLowResMapLen = len(geoHashes)
-    csv2redis.updateLowResMaps(geoHashes)
+    self.csv2redis.updateLowResMaps(geoHashes)
     print("COMPLETED : geoHashes:", geoHashes, file=sys.stderr)
     self.progress = "COMPLETED"
 
@@ -166,7 +164,7 @@ def capturePost(dsHash=dbnsDefault):
 
   # print(request.headers, file=sys.stderr)
   jsStr = (request.data).decode()
-  print(jsStr, file=sys.stderr)
+  # print(jsStr, file=sys.stderr)
   redisRegistJob = redisRegistThread(dsHash)
   redisRegistJob.jsStr = jsStr
   redisRegistJob.start()
@@ -183,7 +181,7 @@ def getEditStat(dsHash=dbnsDefault):
   if (isinstance(redisRegistJob, redisRegistThread) and redisRegistJob.isAlive()):
     regStat = redisRegistJob.progress
     if regStat == "S3_":
-      regStat = "S3_" + str(csv2redis.getBuildAllLowResMapCount()) + "/" + str(allLowResMapLen)
+      regStat = "S3_" + str(redisRegistJob.csv2redis.getBuildAllLowResMapCount()) + "/" + str(allLowResMapLen)
       pass
     return ("Status: " + regStat)
   else:
@@ -192,6 +190,7 @@ def getEditStat(dsHash=dbnsDefault):
 
 @app.route("/svgmap/listSubLayers")
 def listSubLasyers():
+  csv2redis = Csv2redisClass()
   sl = csv2redis.listSubLayers()
   print(sl)
   dsl = {}
@@ -209,6 +208,7 @@ def buildLayer():
   jsStr = (request.data).decode()
   jsonData = json.loads(jsStr)
   print("called buildLayer: parsedJson: ", jsonData)
+  csv2redis = Csv2redisClass()
   ans = csv2redis.registSchema(jsonData)
   if (ans == True):
     return ("OK")
@@ -252,12 +252,11 @@ def getData(poiDatas, latCol, lngCol):
     else:
       splitMeta = meta.split(',', -1)
       if (latCol > lngCol):
-        splitMeta.insert(lngCol, str(poiData["longitude"]))
-        splitMeta.insert(latCol, str(poiData["latitude"]))
+        splitMeta.insert(poiData["longitude"], lngCol)
+        splitMeta.insert(poiData["latitude"], latCol)
       else:
-        splitMeta.insert(latCol, str(poiData["latitude"]))
-        splitMeta.insert(lngCol, str(poiData["longitude"]))
-      print("splitMeta:", splitMeta)
+        splitMeta.insert(poiData["latitude"], latCol)
+        splitMeta.insert(poiData["longitude"], lngCol)
       oneData = {"lat": lat, "lng": lng, "data": ",".join(splitMeta), "hkey": hkey}
 
     out.append(oneData)
@@ -269,6 +268,7 @@ def getData(poiDatas, latCol, lngCol):
 def deleteAllData(dsHash=dbnsDefault):
   if checkLock():
     print("Get delete all data command")
+    csv2redis = Csv2redisClass()
     csv2redis.init(dsHash)
     dc = csv2redis.deleteAllData()
     clearLock()
@@ -281,6 +281,7 @@ def deleteAllData(dsHash=dbnsDefault):
 def removeDataset(dsHash):
   if checkLock():
     print("Get removeDataset command")
+    csv2redis = Csv2redisClass()
     csv2redis.init(dsHash)
     dc = csv2redis.deleteAllData(True)
     clearLock()
@@ -330,6 +331,8 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
     # print("tile Numb:" + str(geoHash), file=sys.stderr)
     # print("tileName:" + tileName, file=sys.stderr)
 
+    csv2redis = Csv2redisClass()
+
     csv2redis.init(dsHash)
     # print(csv2redis.csvSchema, file=sys.stderr)
     # print(csv2redis.csvSchemaType, file=sys.stderr)
@@ -342,6 +345,7 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
       pngByteIo = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True, True)
       return send_file(pngByteIo, mimetype='image/png')
   elif tileName.startswith("svgMap") and tileName.endswith(".svg"):  # for root svg content
+    csv2redis = Csv2redisClass()
     csv2redis.init(dsHash)
     svgContent = csv2redis.saveSvgMapTileN(None, None, LowResImage, True)
     return Response(svgContent, mimetype='image/svg+xml')
