@@ -4,9 +4,6 @@
 SVGMapのコンテナファイルを生成するクラス
 
   ※CSV2redisの実装に則りpython標準のXMLパーサを使用するのではなく単純に文字列としてファイルに書き出すこととする
-  +1
-  2019/06/xx y.sakiura
-  2019/08/23 デフォルトのアイコンを使えるようにした s.takagi
 """
 
 from xml.sax.saxutils import escape
@@ -41,14 +38,12 @@ class SvgmapContainer:
     self.__definitions = []
     self.__data_property_name = data_property  # CSVカラム名
     self.__data_property_type = data_property_type  # カラムの型
-    # self.__color_column_index = len(self.__data_property_name) - 1  # 色を変更するカラム番号
-    self.__color_column_index = None  # デフォルトは色変えないタイプにしておきます
-    self.defaultIconId = ""
+    self.__color_column_index = len(self.__data_property_name) - 1  # 色を変更するカラム番号
 
     self.__header.append("<?xml version='1.0' encoding='UTF-8'?>\n<svg property='")
     self.__header.append(",".join(self.__data_property_name))
-    self.__header.append("' data-property-type='")  # これいるんでしたっけ？ オーサリング系で使ってます
-    self.__header.append(",".join(self.__data_property_type))
+    # self.__header.append("' data-property-type='") # これいるんでしたっけ？
+    # self.__header.append(",".join(self.__data_property_type))
     self.__header.append(
         "' viewBox='9000,-5500,10000,10000' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>\n"
     )
@@ -74,17 +69,11 @@ class SvgmapContainer:
 
   # 色フラグの登録
   def regist_defs(self, _colors: list):
-    firstIcon = True
     body = Tag("defs")
     for color in _colors:
       # print(color)
       g = Tag("g")
       g.id = color["flag"]
-      if (firstIcon):
-        self.defaultIconId = g.id
-        # print("firstIconID is ...............", self.defaultIconId)
-        firstIcon = False
-
       if color["color"][0] == "#":
         # case color code
         tag = Tag("rect")
@@ -131,7 +120,6 @@ class SvgmapContainer:
     """
     if self.__color_column_index is None:
       # デフォルトの色を使用してプロット（既存と同じ青でいいかなぁ）
-      self.__container.append({"title": title, "lat": lat, "lng": lng, "metadatas": metadatas})
       pass
     else:
       #
@@ -141,11 +129,9 @@ class SvgmapContainer:
         pass
       #
       if self.__data_property_type[self.__color_column_index] is int:
-        # TBD
         pass
       #
       if self.__data_property_type[self.__color_column_index] is float:
-        # TBD
         pass
 
   def add_tag(self, _tag) -> None:
@@ -155,25 +141,14 @@ class SvgmapContainer:
   def convert_raw_to_svgmap_tag(self) -> str:
     content = ""
     for item in self.__container:
-      if (self.__color_column_index is None):
-        iconId = self.defaultIconId
-      else:
-        iconId = item["metadatas"][self.__color_column_index]
-
       content += ("  <use xlink:href='#%s' xlink:title='%s' transform='ref(svg,%s,%s)' content='%s'/>\n" % (
-          iconId,
-          self.xmlEscape(escape(item["title"])),
+          item["metadatas"][self.__color_column_index],
+          escape(item["title"]),
           100 * math.floor(float(item["lng"]) * 1000000) / 1000000,
           -100 * math.floor(float(item["lat"]) * 1000000) / 1000000,
-          self.xmlEscape(escape(",".join(item["metadatas"]))),
+          escape(",".join(item["metadatas"])),
       ))
     return content
-
-  def xmlEscape(self, str):  # escapeはちょっとまずいので・・・
-    ans = str.replace("'", "&apos;")
-    ans = ans.replace('"', "&quot;")
-    ans = ans.replace("&", "&amp;")
-    return (ans)
 
   #
   def save_to_container_file(self, file_path):

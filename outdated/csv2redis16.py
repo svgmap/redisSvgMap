@@ -34,7 +34,7 @@ import hashlib
 #  Rev13  2019/04/25 (MainKeyの)ネームスペースを実装して、複数のPOIデータセット(レイヤー)を、(redisのDB数に依存せず)ひとつのRedisDBの中で扱えるようにする。
 #  Rev14  2019/05/xx Issue #2,#3対応(Schemaおよび登録データの整理)
 #  Rev15  ちょっと飛ばしてます(svg出力ルーチンカスタマイザブル) Rev17で再度
-#  Rev16  2019/08/02 クラス化しました  
+#  Rev16  2019/08/02 クラス化しました
 #
 # How to use redis...
 # https://redis-py.readthedocs.io/en/latest/
@@ -49,7 +49,9 @@ import hashlib
 #
 # ISSUES 動的出力で小縮尺ビットイメージモードの場合は、もっと効率化できる（ビットイメージ生成はSVGファイル要求時は不要なので）
 
+
 class Csv2redisClass():
+
   def __init__(self):
     #global 変数たち
     #self.r
@@ -77,9 +79,10 @@ class Csv2redisClass():
     # idCol = -1  # 2019/4/2 geoHash下のhashSetのhashKeyとして、このカラムを使う（なければ適当に作っている・・・ メタデータあればメタデータ全部足した文字列、なければ緯度経度の100000倍をつなげたもの
 
     self.overFlowKeys = {}  # quadPartを実行し、子供の階層を構築したメッシュ （オンメモリであり永続化されているわけではない）
-    self.updatedLrMapKeys = {}  # 上のdictで足りると思うが、テストのために実装してみる　pointを追加したとき、そのpointを直上のlrMapのdictを入れる　今後恐らく一点単位の登録が発生すると意味が出てくる？
+    self.updatedLrMapKeys = {
+    }  # 上のdictで足りると思うが、テストのために実装してみる　pointを追加したとき、そのpointを直上のlrMapのdictを入れる　今後恐らく一点単位の登録が発生すると意味が出てくる？
 
-    self.maxLevel = 16 # この値をもとにタイリングは行われない・・・・ほとんど意味ない状態(2019.8.2)
+    self.maxLevel = 16  # この値をもとにタイリングは行われない・・・・ほとんど意味ない状態(2019.8.2)
     self.targetDir = "mapContents"  # コンテンツ出力ディレクトリ
     self.ns = ""
     self.ns = ""  # This is nameSpace str
@@ -87,7 +90,6 @@ class Csv2redisClass():
     self.burstSize = 600
     self.buildAllLowResMapCount = 0
     self.deleteDataList = []
-
 
   # static for schema["Type"]
   T_ENUM = 0
@@ -98,11 +100,9 @@ class Csv2redisClass():
   svgFileNameHd = "svgMapTile"
   topVisibleMinZoom = 4.5
 
-
   UseRedisHash = True  # これはもはやTrue固定です　あとでFalseケースの実装を外します 2019/3/13
 
-
-  def registLrMap(self,lrMap, xyKey, splitedData):
+  def registLrMap(self, lrMap, xyKey, splitedData):
     # 低解像度統計データを構築・登録する
     # splitedData: 登録しようとしているデータ
     # xyKey: そのデータの下記lrMapにおけるピクセル座標を用いたハッシュキー
@@ -169,8 +169,7 @@ class Csv2redisClass():
           else:
             pixData[i] += len(val)
 
-
-  def addLowResMap(self,targetGeoHash, lat, lng, poidata, lrMap, lat0, lng0, lats, lngs):
+  def addLowResMap(self, targetGeoHash, lat, lng, poidata, lrMap, lat0, lng0, lats, lngs):
     # poidata：split済みのメタデータ文字列　ただし０，１番目に緯度経度入り
     # lat0, lng0, lats, lngs = geoHashToLatLng(targetGeoHash)
     # print("\nbuildLowResMap: targetLatLng:", lat0, lng0, lats, lngs)
@@ -188,8 +187,7 @@ class Csv2redisClass():
     # print("addLowResMap", lrPixKey)
     self.registLrMap(lrMap, lrPixKey, poidata)
 
-
-  def geoHashToLatLng(self,hash):
+  def geoHashToLatLng(self, hash):
     char_list = list(hash)
     lats = 180
     lngs = 180
@@ -211,12 +209,10 @@ class Csv2redisClass():
       lats = lats / 2
       lngs = lngs / 2
 
-
   #  print(hash,lat,lng,lats,lngs)
     return lat, lng, 2 * lats, 2 * lngs
 
-
-  def getGeoHashCode(self,lat, lng, lat0, lng0, lats, lngs):
+  def getGeoHashCode(self, lat, lng, lat0, lng0, lats, lngs):
     la = 0
     lngs = lngs / 2
     if lng < (lng0 + lngs):
@@ -234,8 +230,7 @@ class Csv2redisClass():
     ans = chr(65 + la)  # ABCD  lng:A->B  lat:A->C
     return ans, lat0, lng0, lats, lngs
 
-
-  def quadPart(self,ans, lat0, lng0, lats, lngs, latCol, lngCol):
+  def quadPart(self, ans, lat0, lng0, lats, lngs, latCol, lngCol):
     # 登録個数の上限に達したタイルのデータを４分割
     # 分割後にLowResMapを構築するのは、一連の全データの追加後に行うこととしてみる
     # そのかわり、データ追加に伴って影響を受けたLowResmapのhashをオンメモリに貯めることにしてみる（これはこの関数内ではなく、redisに個々のデータを追加している段階で行うこと）
@@ -271,8 +266,7 @@ class Csv2redisClass():
     self.overFlowKeys[ans] = True
     print("\nEnd QuadPart:", ans, file=sys.stderr)
 
-
-  def storeLowResDataToRedis(self,r, key, lowResMap):
+  def storeLowResDataToRedis(self, r, key, lowResMap):
     # use pickle http://www.denzow.me/entry/2017/10/08/212059
     # print("storeLowResDataToRedis", key, "  map:", lowResMap)
     self.r.set(self.ns + key, pickle.dumps(lowResMap))
@@ -281,8 +275,7 @@ class Csv2redisClass():
     # parentKey = key
     # childLowResMap = lowResMap
 
-
-  def updateLowResMaps(self,keySet):
+  def updateLowResMaps(self, keySet):
     allKeys = set()
     for key in keySet:
       allKeys |= (self.getAncestorsKeys(key))
@@ -290,8 +283,7 @@ class Csv2redisClass():
     print("updateLowResMaps:", allKeys)
     self.buildAllLowResMap(allKeys)
 
-
-  def getAncestorsKeys(self,key):
+  def getAncestorsKeys(self, key):
     ret = set()
     for i in range(len(key)):
       if (i == 0):
@@ -301,8 +293,7 @@ class Csv2redisClass():
       ret.add(sKey)
     return ret
 
-
-  def updateAncestorsLowResMap(self,key):
+  def updateAncestorsLowResMap(self, key):
     # 指定したLowResMap以上のものを更新する(そのポイントを子孫に持つものだけを生成しなおしなので少し早いと思う)
     # データ1個を追加した後に、そのデータの一つ上の階層のLowResMapを指定すれば、全LowResMapが更新したデータを反映したものになる
     print("updateAncestorsLowResMap", key, file=sys.stderr)
@@ -323,15 +314,11 @@ class Csv2redisClass():
         childTiles.append(self.getChildData(sKey + "D"))
         self.updateLowResMap(sKey, thisTile, childTiles)
 
-
-
-
   def getBuildAllLowResMapCount(self):
     print("getBuildAllLowResMapCount:", self.buildAllLowResMapCount)
     return self.buildAllLowResMapCount
 
-
-  def buildAllLowResMap(self,keys=None):
+  def buildAllLowResMap(self, keys=None):
     # 全LowResMapを一から生成しなおす（元のLowResMapデータがあっても利用せず上書き)
     #    global r, buildAllLowResMapCount
     if (keys is None):
@@ -347,7 +334,8 @@ class Csv2redisClass():
 
     for key in reversed(keys):  # 下のレベルから
       # key = key.decode()
-      if self.r.type(self.ns + key) == b"string":  # そのタイルはオーバーフローしている実データがないタイル　実際にはpickleでバイナリ化したデータが入っているかb"OVERFLOW"がただ入ってる
+      if self.r.type(self.ns +
+                     key) == b"string":  # そのタイルはオーバーフローしている実データがないタイル　実際にはpickleでバイナリ化したデータが入っているかb"OVERFLOW"がただ入ってる
         print(key, "STR", file=sys.stderr)
         thisTile = {}
         # thisTile = self.r.get(key)
@@ -369,7 +357,6 @@ class Csv2redisClass():
 
       self.buildAllLowResMapCount = self.buildAllLowResMapCount + 1
 
-
   def printAllLowResMap(self):
     #    global r
     bkeys = self.r.keys(self.ns + "[A-D]*")
@@ -378,12 +365,12 @@ class Csv2redisClass():
 
     for key in reversed(bkeys):
       key = key.decode()
-      if self.r.type(self.ns + key) == b"string":  # そのタイルはオーバーフローしている実データがないタイル　実際にはpickleでバイナリ化したデータが入っているかb"OVERFLOW"がただ入ってる
+      if self.r.type(self.ns +
+                     key) == b"string":  # そのタイルはオーバーフローしている実データがないタイル　実際にはpickleでバイナリ化したデータが入っているかb"OVERFLOW"がただ入ってる
         thisTile = pickle.loads(self.r.get(self.ns + key))
         print("Key:", key, thisTile, file=sys.stderr)
 
-
-  def getChildData(self,key):
+  def getChildData(self, key):
     dType = self.r.type(self.ns + key)  # 高性能化のためexistsを排除
     if dType == b"string":  # overflowed lowResImage
       # print("child data is overflowtile ::: ", key)
@@ -395,7 +382,6 @@ class Csv2redisClass():
     else:
       return (None)
 
-
   #    print(key, self.r.type(key))
   #    if ( self.r.type(key.decode()))
   #  for key in bkeys:
@@ -404,8 +390,7 @@ class Csv2redisClass():
   #  keys.sort(key=len)
   #  print (keys)
 
-
-  def updateLowResMap(self,geoHash, lowResMap, childTiles):
+  def updateLowResMap(self, geoHash, lowResMap, childTiles):
     # その階層のLowResMapを更新する
     # この関数は再帰的に上に伸ばしていく処理の中で使われるはず 12/12
     # geoHash: そのlowResMapのgeoHashタイル番号
@@ -447,8 +432,7 @@ class Csv2redisClass():
       print("tile:", geoHash, " is NULL. delete", file=sys.stderr)
       self.r.delete(self.ns + geoHash)
 
-
-  def updateLowResMapData(self,parentLowResMap, childTile, lat0, lng0, lats, lngs, latCol, lngCol):
+  def updateLowResMapData(self, parentLowResMap, childTile, lat0, lng0, lats, lngs, latCol, lngCol):
     # updateLowResMap用のサブルーチン
     # 子供が実データのときに、それを親に反映させる
     # registLrMap(addLowResMap) とほとんど同じルーチンなので共用化するべき
@@ -458,8 +442,7 @@ class Csv2redisClass():
       lng = float(poi[lngCol])
       self.addLowResMap("", lat, lng, poi, parentLowResMap, lat0, lng0, lats, lngs)
 
-
-  def updateLowResMapSub(self,parentLowResMap, childLowResMap, px0, py0):
+  def updateLowResMapSub(self, parentLowResMap, childLowResMap, px0, py0):
     # updateLowResMap用のサブルーチン
     # 子供がlowResMapの時に、それを親に反映させる
     # 一つの子供のlowResMapを対象(親におけるその相対ピクセル位置px0,py0)
@@ -514,8 +497,7 @@ class Csv2redisClass():
               else:
                 parentPixData[i] += childPixData[i]
 
-
-  def investigateKeys(self,registDataList, maxLevel):  # 高性能化の試行
+  def investigateKeys(self, registDataList, maxLevel):  # 高性能化の試行
     # そのPOIレコードに対応するoverflowしていないタイル番号をバースト探索する
     #    global overFlowKeys
     keys = []
@@ -543,7 +525,8 @@ class Csv2redisClass():
         lng = data["lng"]
         if (keys[j] == "") or (keys[j][-1] != ":"):  # 見つかったもの":"付与はそれ以上深堀しない
 
-          ans0, lat0s[j], lng0s[j], latss[j], lngss[j] = self.getGeoHashCode(lat, lng, lat0s[j], lng0s[j], latss[j], lngss[j])
+          ans0, lat0s[j], lng0s[j], latss[j], lngss[j] = self.getGeoHashCode(lat, lng, lat0s[j], lng0s[j], latss[j],
+                                                                             lngss[j])
           keys[j] += ans0
           if not (keys[j] in query2redis):
             pipe.type(self.ns + keys[j])
@@ -580,12 +563,10 @@ class Csv2redisClass():
     for j in range(len(keys)):  # :を取り除く
       keys[j] = (keys[j])[0:-1]
 
-
   #  print (keys)
     return keys
 
-
-  def setDataList(self,registDataList, keys):
+  def setDataList(self, registDataList, keys):
     # 実際にデータを登録する
     pipe = self.r.pipeline()
     for j in range(len(keys)):
@@ -604,8 +585,7 @@ class Csv2redisClass():
     # print ("setDataList:",ans,file=sys.stderr)
     return (ans)
 
-
-  def checkSizes(self,keys):
+  def checkSizes(self, keys):
     # 登録されたkeyに対するデータサイズを調査する　なんかちょっとロジックが無駄なことやってるかも？
     pipe = self.r.pipeline()
     keyList = []  # このへん 最初からdictで順番守られるんじゃないかな？
@@ -627,8 +607,7 @@ class Csv2redisClass():
     # print(sizes)
     return (keyDict)
 
-
-  def checkSiblingSizes(self,keys):
+  def checkSiblingSizes(self, keys):
     # 登録されたkeyの兄弟全体のデータサイズを調査する(データ削除に伴うタイルの再統合チェック用)
     # 兄弟のうち一つでもlowResMap(redis string type)があったら、その時点でサイズオーバーとみなす
     # pipe = self.r.pipeline()
@@ -653,8 +632,7 @@ class Csv2redisClass():
     # print("checkSiblingSizes:",keyDict)
     return (keyDict)
 
-
-  def burstQuadPart(self,dataSizes,maxLevel):
+  def burstQuadPart(self, dataSizes, maxLevel):
     latCol = self.schemaObj.get("latCol")
     lngCol = self.schemaObj.get("lngCol")
     for key, count in dataSizes.items():
@@ -662,8 +640,7 @@ class Csv2redisClass():
         lat0, lng0, lats, lngs = self.geoHashToLatLng(key)
         self.quadPart(key, lat0, lng0, lats, lngs, latCol, lngCol)
 
-
-  def registData(self,oneData, maxLevel):
+  def registData(self, oneData, maxLevel):
     # global registDataList
     self.registDataList.append(oneData)
     if len(self.registDataList) < self.burstSize:
@@ -673,8 +650,7 @@ class Csv2redisClass():
       self.registDataList = []
     return (psize)
 
-
-  def burstRegistData(self,registDataList, maxLevel):
+  def burstRegistData(self, registDataList, maxLevel):
     # 一括してデータの登録を行う（ことで高性能化している）
     # それぞれのデータがどのgeoHashに属するか調査する
     keys = self.investigateKeys(registDataList, maxLevel)
@@ -690,21 +666,19 @@ class Csv2redisClass():
     # print ("dataSizes:",dataSizes)
     return ({"success": len(ans), "keys": keys})
 
-
-  def flushRegistData(self,maxLevel):
+  def flushRegistData(self, maxLevel):
     # バッファにたまっているデータをしっかり書き出してバッファもクリアする
     # global registDataList
     psize = self.burstRegistData(self.registDataList, maxLevel)
     self.registDataList = []
     return (psize)
 
-
   # データを１個追加する。 [[[ OBSOLUTED ]]]
   # これを呼んだだけではLowResMapは更新されない。
   # LowResMapの更新方法は２つ
   # データ１個づつ更新させたい場合 updateAncestorsLowResMap
   # 全部作り直す場合 buildAllLowResMap
-  def registOneData(self,oneData, maxLevel):
+  def registOneData(self, oneData, maxLevel):
     lat = oneData.lat
     lng = oneData.lng
     data = oneData.data
@@ -743,13 +717,10 @@ class Csv2redisClass():
           #        self.r.rpush(ans, data)
           break
 
-
   #  print(".", end='')
   #  print ("Regist: Key:", ans ," Val:",data)
 
-
-
-  def deleteData(self,oneData, maxLevel):
+  def deleteData(self, oneData, maxLevel):
     # global deleteDataList
     self.deleteDataList.append(oneData)
     if len(self.deleteDataList) < self.burstSize:
@@ -759,16 +730,14 @@ class Csv2redisClass():
       self.deleteDataList = []
     return (psize)
 
-
-  def flushDeleteData(self,maxLevel):
+  def flushDeleteData(self, maxLevel):
     # バッファにたまっているデータ分も消去してバッファもクリアする
     # global deleteDataList
     psize = self.burstDeleteData(self.deleteDataList, maxLevel)
     self.deleteDataList = []
     return (psize)
 
-
-  def burstDeleteData(self,deleteDatas, maxLevel):
+  def burstDeleteData(self, deleteDatas, maxLevel):
     # 一括してデータの削除を行う
     keys = self.investigateKeys(deleteDatas, maxLevel)
     ans = self.delDataList(deleteDatas, keys)
@@ -777,8 +746,7 @@ class Csv2redisClass():
     self.burstCombine(dataSizes)
     return ({"success": len(ans), "keys": keys})
 
-
-  def burstCombine(self,dataSizes):
+  def burstCombine(self, dataSizes):
     # 兄弟の合計がリミットを下回っていたら上のタイルに統合してしまう
     # ただしすべての兄弟が実データ（lowResMapでない）の場合に限る
     # pipe版
@@ -810,8 +778,7 @@ class Csv2redisClass():
           if len(dat) > 0:
             self.r.hmset(self.ns + pKey, dat)
 
-
-  def delDataList(self,deleteDatas, geoHashKeys):
+  def delDataList(self, deleteDatas, geoHashKeys):
     pipe = self.r.pipeline()
     for j in range(len(geoHashKeys)):
       geoHashKey = geoHashKeys[j]
@@ -825,8 +792,7 @@ class Csv2redisClass():
     print("delDataList pipe::: ans:", ans, "  deleteDatas:", deleteDatas, " geoHashKeys:", geoHashKeys, file=sys.stderr)
     return (ans)
 
-
-  def saveAllSvgMap(self,lowResImage=False):
+  def saveAllSvgMap(self, lowResImage=False):
     # global r
     bkeys = self.r.keys(self.ns + "[A-D]*")
     pipe = self.r.pipeline()
@@ -843,8 +809,7 @@ class Csv2redisClass():
       if (j % 20 == 0):
         print(100 * (j / len(bkeys)), "%", file=sys.stderr)
 
-
-  def saveSvgMapTile(self,geoHash, dtype=None):  # pythonのXML遅くて足かせになったので、この関数は使わなくしました 2019/1/16
+  def saveSvgMapTile(self, geoHash, dtype=None):  # pythonのXML遅くて足かせになったので、この関数は使わなくしました 2019/1/16
     # global r
     latCol = self.schemaObj.get("latCol")
     lngCol = self.schemaObj.get("lngCol")
@@ -949,15 +914,13 @@ class Csv2redisClass():
 
     csv2svgmap.save_xmldoc(doc, Csv2redisClass.svgFileNameHd + geoHash + ".svg")
 
-
-  def getSchemaTypeStrArray(self,csvSchemaType):
+  def getSchemaTypeStrArray(self, csvSchemaType):
     ans = []
     for sn in csvSchemaType:
       ans.append(Csv2redisClass.scehmaTypeStr[sn])
     return (ans)
 
-
-  def getCsvStrExclLatLng(self,strList, latCol, lngCol):  # 配列から緯度経度カラムを除いたカンマ区切り文字列を作ります
+  def getCsvStrExclLatLng(self, strList, latCol, lngCol):  # 配列から緯度経度カラムを除いたカンマ区切り文字列を作ります
     ans = []
     for i, val in enumerate(strList):
       if (i == latCol or i == lngCol):
@@ -967,8 +930,8 @@ class Csv2redisClass():
 
     return (",".join(ans))
 
-
-  def saveSvgMapTileN(self,
+  def saveSvgMapTileN(
+      self,
       geoHash=None,  # タイルハッシュコード
       dtype=None,  # あらかじめわかっている場合のデータタイプ(低解像タイルか実データタイル化がわかる)
       lowResImage=False,  # 低解像タイルをビットイメージにする場合
@@ -1014,7 +977,8 @@ class Csv2redisClass():
       if lats < 360:  # レベル0のタイル(レイヤールートコンテナ)じゃない場合はそのレベルの低解像度タイルを入れる
         pixW = 100 * lngs / self.lowresMapSize
         pixH = 100 * lats / self.lowresMapSize
-        outStrL.append("<g fill='blue' visibleMaxZoom='{:.3f}'>\n".format((Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1))))
+        outStrL.append("<g fill='blue' visibleMaxZoom='{:.3f}'>\n".format(
+            (Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1))))
 
         # bitImage出力 http://d.hatena.ne.jp/white_wheels/20100322/p1
         if lowResImage:
@@ -1139,7 +1103,8 @@ class Csv2redisClass():
         else:
           title = poi[0]
 
-        outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.4f},{:.4f})'".format(100 * math.floor(lng*1000000)/1000000, -100 * math.floor(lat*1000000)/1000000))
+        outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.4f},{:.4f})'".format(
+            100 * math.floor(lng * 1000000) / 1000000, -100 * math.floor(lat * 1000000) / 1000000))
         outStrL.append(" xlink:title='")
         outStrL.append(self.xmlEscape(title))
         outStrL.append("' x='0' y='0' content='")
@@ -1154,17 +1119,13 @@ class Csv2redisClass():
         f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
         # f.flush() # ひとまずファイルの書き出しはシステムお任せにしましょう・・
 
-
-  def xmlEscape(self,str):
+  def xmlEscape(self, str):
     ans = str.replace("'", "&apos;")
     ans = ans.replace('"', "&quot;")
     ans = ans.replace("&", "&amp;")
     return (ans)
 
-
-
-
-  def init(self,redisNs="svgMap:"):
+  def init(self, redisNs="svgMap:"):
     # global r, schemaObj, ns
 
     self.ns = redisNs
@@ -1190,8 +1151,7 @@ class Csv2redisClass():
       print("[[[INIT]]]    SKIP load schema : NS: ", redisNs, file=sys.stderr)
       pass
 
-
-  def getSchema(self,header):
+  def getSchema(self, header):
     # CSVファイルのヘッダ行からスキーマを取得する
     # http://programming-study.com/technology/python-for-index/
     # 最初の行はカラム名とその型（スキーマを獲得する）（ToDo: サブルーチン化）
@@ -1239,16 +1199,14 @@ class Csv2redisClass():
 
     return csvSchemaObj
 
-
-  def getCsvReader(self,inputcsv):
+  def getCsvReader(self, inputcsv):
     csv_file = open(inputcsv, "r", encoding="utf-8", errors="", newline="")
     # リスト形式
     file = csv.reader(
         csv_file, delimiter=",", doublequote=True, lineterminator="\r\n", quotechar='"', skipinitialspace=True)
     return file
 
-
-  def readAndRegistData(self,file, latCol, lngCol, maxLevel):
+  def readAndRegistData(self, file, latCol, lngCol, maxLevel):
     # 二行目以降がデータになる～実データを読み込む（ToDo: サブルーチン化）
     lines = 0
     for row in file:
@@ -1263,8 +1221,7 @@ class Csv2redisClass():
 
     self.flushRegistData(maxLevel)  # バッファを全部書き出す
 
-
-  def readAndDeleteData(self,file, latCol, lngCol, maxLevel):
+  def readAndDeleteData(self, file, latCol, lngCol, maxLevel):
     # 二行目以降がデータになる～実データを読み込む（ToDo: サブルーチン化）
     lines = 0
     for row in file:
@@ -1279,13 +1236,12 @@ class Csv2redisClass():
 
     self.flushDeleteData(maxLevel)  # バッファを全部消去処理して完了させる
 
-
-  def validateData(self,dataStr, index):  # スキーマと照合して整合性チェックする　実質は数値のみ
+  def validateData(self, dataStr, index):  # スキーマと照合して整合性チェックする　実質は数値のみ
     csvSchemaType = self.schemaObj.get("type")
     ans = False
     if csvSchemaType[index] == Csv2redisClass.T_ENUM:
       ans = True
-    elif csvSchemaType[index] ==  Csv2redisClass.T_NUMB:
+    elif csvSchemaType[index] == Csv2redisClass.T_NUMB:
       if self.is_float(dataStr):
         ans = True
       # print ( "NUM:",dataStr,ans)
@@ -1294,16 +1250,14 @@ class Csv2redisClass():
     # print ( "validateData:",dataStr,index,csvSchemaType[index] ,ans)
     return ans
 
-
-  def is_float(self,s):
+  def is_float(self, s):
     try:
       float(s)
     except:
       return False
     return True
 
-
-  def getOneData(self,row, latCol, lngCol, idCol=-1):
+  def getOneData(self, row, latCol, lngCol, idCol=-1):
     csvSchema = self.schemaObj.get("schema")
     # csv１行分の配列から、登録用のデータを構築する。ここで、データの整合性もチェックする
     # Flaskによるウェブサービスではこの関数は使ってない(2019.5.14)
@@ -1341,8 +1295,7 @@ class Csv2redisClass():
     # print("oneData:", oneData, " row:", row)
     return (oneData)
 
-
-  def deleteAllData(self,flushSchema=False):
+  def deleteAllData(self, flushSchema=False):
     #    global r
     i = 0
     pipe = self.r.pipeline()
@@ -1357,8 +1310,7 @@ class Csv2redisClass():
     print("deleted.", i, "  ns:", self.ns)
     return i
 
-
-  def registSchema(self,schemaData):
+  def registSchema(self, schemaData):
     #    global r, schemaObj, ns
     # r = redis.Redis(host='localhost', port=6379, db=0)
     self.ns = schemaData.get("namespace")
@@ -1369,12 +1321,12 @@ class Csv2redisClass():
     self.schemaObj = schemaData
     return (True)
 
-
   def listSubLayers(self):
     #   global r
     # r = redis.Redis(host='localhost', port=6379, db=0)
     # print(self.r.hgetall("dataSet"))
     return (self.r.hgetall("dataSet"))
+
 
 # END OF CLASS
 
