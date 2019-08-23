@@ -21,6 +21,7 @@
 # https://qiita.com/redshoga/items/60db7285a573a5e87eb6 単にファイルを返すとか
 
 from flask import Flask, request, send_from_directory, Response, send_file
+from flask_cors import CORS
 import urllib.parse
 import sys, os
 import json
@@ -33,8 +34,10 @@ import threading
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import csv2redis14 as csv2redis  # 上で上のディレクトリをappendしてるのでimportできる
+import time
 
 app = Flask(__name__)
+CORS(app)
 
 now_registering = False  # POIの登録中を示すフラグ（登録をシングルに制限）
 
@@ -215,6 +218,7 @@ class redisRegistThread(threading.Thread):
 
 @app.route("/svgmap/<dsHash>/editPoint", methods=["POST"])
 @app.route("/svgmap/editPoint", methods=["POST"])
+
 def capturePost(dsHash=dbnsDefault):
     global redisRegistJob
     if isinstance(redisRegistJob, redisRegistThread) and redisRegistJob.isAlive():
