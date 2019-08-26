@@ -36,7 +36,8 @@ from lib.svgmapContainer import SvgmapContainer, Tag
 #  Rev14  2019/05/xx Issue #2,#3対応(Schemaおよび登録データの整理)
 #  Rev15  ちょっと飛ばしてます(svg出力ルーチンカスタマイザブル) Rev17で再度
 #  Rev16  2019/08/02 クラス化しました
-#  Rev17  2019/09/23 Rev14のpull req.内容をRev16に適用しました このあとさらにsvg出力ルーチンカスタマイザブルを入れる予定
+#  Rev17  2019/08/23 Rev14のpull req.内容をRev16に適用しました
+#         2019/08/23 完全カスタムsvg出力ルーチンフレームワークを入れはじめた（customDataGenerator、customLowResGenerator）
 #
 # How to use redis...
 # https://redis-py.readthedocs.io/en/latest/
@@ -49,7 +50,9 @@ from lib.svgmapContainer import SvgmapContainer, Tag
 #  小縮尺データをビットイメージで出力する機能
 #  オンデマンドでコンテンツを生成するwebサーバ機能
 #
-# ISSUES 動的出力で小縮尺ビットイメージモードの場合は、もっと効率化できる（ビットイメージ生成はSVGファイル要求時は不要なので）
+# ISSUES
+#  DONE: 動的出力で小縮尺ビットイメージモードの場合は、もっと効率化できる（ビットイメージ生成はSVGファイル要求時は不要なので）
+#  registDataのバリデーションチェックがされてない（カラム数が違っててもどんどん登録してしまう・・・）
 
 
 class Csv2redisClass():
@@ -95,8 +98,16 @@ class Csv2redisClass():
 
     # 色(アイコン種)分けに関するオプション用：デフォルトはいつも同じビットイメージアイコンを使う感じ 2019.8.23 s.takagi
     self.poi_color = [{"flag": "f1", "color": "mappin.png"}]
-    self.poi_index = None
+    self.poi_index = None  # アイコン種を変化させるためのメタデータの番号(lat,lng除く)
     self.poi_size = ["-8", "-25", "19", "27"]  # x,y,width,height
+
+    # 完全にカスタムなコンテンツ生成ルーチンを組み込むI/F
+    # customDataGeneratorオブジェクトは、outputSvgContent([poiObj],svgc:SvgmapContainer):str(xmlStr)を実装している必要がある
+    # poiObj(Dict) = {"lat", "lng", "title", "metadata"}
+    #    svgcにはヘッダやCRSが設定されています
+    self.customDataGenerator = None
+    # customLowResGeneratorも同様　(TBD)
+    self.customLowResGenerator = None
 
   # static for schema["Type"]
   T_ENUM = 0
@@ -822,7 +833,7 @@ class Csv2redisClass():
       ans.append(Csv2redisClass.scehmaTypeStr[sn])
     return (ans)
 
-  def getCsvStrExclLatLng(self, strList, latCol, lngCol):  # 配列から緯度経度カラムを除いたカンマ区切り文字列を作ります
+  def getMetaExclLatLng(self, strList, latCol, lngCol):  # 配列から緯度経度カラムを除いたカンマ区切り文字列を作ります
     ans = []
     for i, val in enumerate(strList):
       if (i == latCol or i == lngCol):
@@ -830,7 +841,7 @@ class Csv2redisClass():
       else:
         ans.append(val)
 
-    return (",".join(ans))
+    return (ans)
 
   def saveSvgMapTileN(
       self,
@@ -840,7 +851,7 @@ class Csv2redisClass():
       onMemoryOutput=False,  # ライブラリとして使用し、データをオンメモリで渡す場合
       returnBitImage=False):  # オンメモリ渡し(上がTrue限定)のとき、低解像ビットイメージデータを要求する場合
     # saveSvgMapTileを置き換え、SVGMapコンテンツをSAX的に直生成することで高速化を図る　確かに全然早くなった。pythonってやっぱりゆる系？・・・ 2019/1/16
-    outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
+    # outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
 
     # global r
     # global poi_color, poi_index, poi_size
@@ -855,7 +866,9 @@ class Csv2redisClass():
     #    print(dtype)
     #print(csvSchema)
     #print([str] * len(csvSchema))
-    svgc = SvgmapContainer(csvSchema, [str] * len(csvSchema))
+    svgc = SvgmapContainer(
+        self.getMetaExclLatLng(csvSchema, latCol, lngCol),
+        self.getMetaExclLatLng(self.getSchemaTypeStrArray(csvSchemaType), latCol, lngCol))
     svgc.regist_size(self.poi_size)
     svgc.regist_defs(self.poi_color)
     svgc.color_column_index = self.poi_index
@@ -952,11 +965,14 @@ class Csv2redisClass():
       if lats < 360:
         g.fill = 'blue'
         g.visibleMinZoom = Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1)
-      else:  # レベル0のレイヤルートコンテナの場合
-        outStrL.append(
-            "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
-        )
-        outStrL.append("<g>\n")
+      else:  # レベル0のレイヤルートコンテナの場合 (このルーチン　まずくない？)
+        #outStrL.append(
+        # このdefsはオーサリングシステムのアイコンがレイヤールートのdefsを参照していることによるので、何もアイコンはないけどしっかりdefsしておく必要がある！
+        # y.sakiuraさんのシステムでは、無条件で共通のdefsを全部のタイルに置くようになっているので大丈夫になってるからパスする
+        #    "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
+        #)
+        #outStrL.append("<g>\n")
+        pass
 
       for i, exs in enumerate(ceFlg):  # link to child tiles
         cN = chr(65 + i)
@@ -981,10 +997,6 @@ class Csv2redisClass():
       svgc.add_tag(g)
 
     else:  # 実データ
-
-      # defs
-      defs = Tag("defs")
-
       # raw data
       if dtype == b"list":
         src = self.r.lrange(self.ns + geoHash, 0, -1)  # 全POI取得
@@ -993,6 +1005,9 @@ class Csv2redisClass():
         src = list(src.values())
 
       print(geoHash, "real Data:len", len(src), file=sys.stderr)
+
+      outPoiL = []
+
       for poidata in src:
         poi = poidata.decode().split(',', -1)
         lat = float(poi[latCol])
@@ -1001,16 +1016,29 @@ class Csv2redisClass():
           title = poi[titleCol]
         else:
           title = poi[0]
-        svgc.add_content(title, poi[latCol], poi[lngCol], poi)
+        # print("titleCol :::::::", titleCol, "     title:", title, "   poi:", poi)
+
+        if (self.customDataGenerator is None):
+          svgc.add_content(title, poi[latCol], poi[lngCol], self.getMetaExclLatLng(poi, latCol, lngCol))
+        else:
+          poiObj = {"lat": lat, "lng": lng, "title": title, "metadata": self.getMetaExclLatLng(poi, latCol, lngCol)}
+          outPoiL.append(poiObj)
 
     #print(svgc.output_str_to_container())
 
     if (onMemoryOutput):  # 文字列として返却するだけのオプション
       #return "".join(outStrL)
-      return svgc.output_str_to_container()
+      if (self.customDataGenerator is None):
+        return svgc.output_str_to_container()
+      else:
+        return self.customDataGenerator.outputSvgContent(outPoiL, svgc)
     else:
       with open(self.targetDir + Csv2redisClass.svgFileNameHd + geoHash + ".svg", mode='w', encoding='utf-8') as f:
-        f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
+        # f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
+        if (self.customDataGenerator is None):
+          f.write(svgc.output_str_to_container())
+        else:
+          f.write(self.customDataGenerator.outputSvgContent(outPoiL, svgc))
         # f.flush() # ひとまずファイルの書き出しはシステムお任せにしましょう・・
 
   def xmlEscape(self, str):

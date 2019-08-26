@@ -172,7 +172,7 @@ class SvgmapContainer:
   def xmlEscape(self, str):  # escapeはちょっとまずいので・・・
     ans = str.replace("'", "&apos;")
     ans = ans.replace('"', "&quot;")
-    ans = ans.replace("&", "&amp;")
+    #ans = ans.replace("&", "&amp;") # これはまずいので外します 2019/8/26
     return (ans)
 
   #

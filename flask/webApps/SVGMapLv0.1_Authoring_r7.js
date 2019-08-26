@@ -590,7 +590,7 @@ function setPoiSvg(poiParams, poiDocId, targetPoiId){
 		if ( param.metadata ){
 			metaStr = "";
 				for ( var i = 0 ; i < param.metadata.length ; i++ ){
-					metaStr += svgMap.escape(param.metadata[i]);
+					metaStr += escape(param.metadata[i]); // CSVなのでカンマもエスケープ 2019/8/26
 					if ( i == param.metadata.length -1 ){
 						break;
 					}
@@ -666,7 +666,7 @@ function setPolySvg(targetDoc,poiDocId){
 		var meta = getMetaUiData(targetDoc);
 		metaStr = "";
 		for ( var i = 0 ; i < meta.length ; i++ ){
-			metaStr += svgMap.escape(meta[i]);
+			metaStr += escape(meta[i]); // CSVなのでカンマもエスケープ 2019/8/26
 			if ( i == meta.length -1 ){
 				break;
 			}
@@ -677,6 +677,24 @@ function setPolySvg(targetDoc,poiDocId){
 	return (targetSvgElem);
 }
 
+function escape(str) {
+//	str = str.replace(/&/g,"&amp;");
+	str = str.replace(/"/g,"&quot;");
+	str = str.replace(/'/g,"&#x27;");
+	str = str.replace(/</g,"&lt;");
+	str = str.replace(/>/g,"&gt;");
+	str = str.replace(/,/g,"&#x2c;");
+	return str;
+}
+
+function unEscape(str){
+	str = str.replace(/&quot;/g,'"');
+	str = str.replace(/&#x27;/g,"'");
+	str = str.replace(/&lt;/g,"<");
+	str = str.replace(/&gt;/g,">");
+	str = str.replace(/&#x2c;/g,",");
+	return str;
+}
 
 function readPoiUiParams(targetDoc){
 	var meta = getMetaUiData(targetDoc);
@@ -1364,13 +1382,15 @@ function displayPOIprops(svgTarget){
 	}
 	for ( var i = 0 ; i < props.metaData.length ; i++ ){
 //		console.log(props.metaData[i],me.rows[i].cells[1]);
-		uiDoc.getElementById("meta"+i).value = props.metaData[i];
+		uiDoc.getElementById("meta"+i).value = unEscape(props.metaData[i]);
 	}
 	var smbls =  uiDoc.getElementById("iconselection").childNodes;
 	for ( var i = 0 ; i < smbls.length ; i++ ){
 		smbls[i].style.borderColor="white";
 	}
-	uiDoc.getElementById("symbol"+props.href).style.borderColor="red";
+	if ( uiDoc.getElementById("symbol"+props.href) ){
+		uiDoc.getElementById("symbol"+props.href).style.borderColor="red";
+	}
 	
 	var screenPoint = svgMap.geo2Screen( props.position.lat , props.position.lng );
 	poiCursor.setCursorGeo(props.position);
