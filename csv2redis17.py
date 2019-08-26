@@ -38,6 +38,7 @@ from lib.svgmapContainer import SvgmapContainer, Tag
 #  Rev16  2019/08/02 クラス化しました
 #  Rev17  2019/08/23 Rev14のpull req.内容をRev16に適用しました
 #         2019/08/23 完全カスタムsvg出力ルーチンフレームワークを入れはじめた（customDataGenerator、customLowResGenerator）
+#         2019/08/26 カスタム出力フレームワークを動かした
 #
 # How to use redis...
 # https://redis-py.readthedocs.io/en/latest/
@@ -869,9 +870,13 @@ class Csv2redisClass():
     svgc = SvgmapContainer(
         self.getMetaExclLatLng(csvSchema, latCol, lngCol),
         self.getMetaExclLatLng(self.getSchemaTypeStrArray(csvSchemaType), latCol, lngCol))
-    svgc.regist_size(self.poi_size)
-    svgc.regist_defs(self.poi_color)
-    svgc.color_column_index = self.poi_index
+
+    if (self.customDataGenerator is None):
+      svgc.regist_size(self.poi_size)
+      svgc.regist_defs(self.poi_color)
+      svgc.color_column_index = self.poi_index
+    else:
+      self.customDataGenerator.regist_defs(svgc)
 
     if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
       dtype = b"string"
@@ -886,6 +891,8 @@ class Csv2redisClass():
 
     if dtype is None:
       dtype = self.r.type(self.ns + geoHash)
+
+    outPoiL = []
 
     if dtype == b"string":  # そのタイルはオーバーフローしている実データがないlowRes pickleタイル
       if lats < 360:  # レベル0のタイル(レイヤールートコンテナ)じゃない場合はそのレベルの低解像度タイルを入れる
@@ -1005,8 +1012,6 @@ class Csv2redisClass():
         src = list(src.values())
 
       print(geoHash, "real Data:len", len(src), file=sys.stderr)
-
-      outPoiL = []
 
       for poidata in src:
         poi = poidata.decode().split(',', -1)

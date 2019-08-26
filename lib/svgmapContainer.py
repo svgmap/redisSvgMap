@@ -43,7 +43,7 @@ class SvgmapContainer:
     self.__data_property_type = data_property_type  # カラムの型
     # self.__color_column_index = len(self.__data_property_name) - 1  # 色を変更するカラム番号
     self.__color_column_index = None  # デフォルトは色変えないタイプにしておきます
-    self.defaultIconId = ""
+    self.__defaultIconId = ""
 
     self.__header.append("<?xml version='1.0' encoding='UTF-8'?>\n<svg property='")
     self.__header.append(",".join(self.__data_property_name))
@@ -81,8 +81,8 @@ class SvgmapContainer:
       g = Tag("g")
       g.id = color["flag"]
       if (firstIcon):
-        self.defaultIconId = g.id
-        # print("firstIconID is ...............", self.defaultIconId)
+        self.__defaultIconId = g.id
+        # print("firstIconID is ...............", self.__defaultIconId)
         firstIcon = False
 
       if color["color"][0] == "#":
@@ -112,6 +112,14 @@ class SvgmapContainer:
   @color_column_index.setter
   def color_column_index(self, index: int) -> None:
     self.__color_column_index = index
+
+  @property
+  def defaultIconId(self) -> str:
+    return self.__defaultIconId
+
+  @defaultIconId.setter
+  def defaultIconId(self, idName: str) -> None:
+    self.__defaultIconId = idName
 
   # SVG用のdefsタグへdictから変換
   def convert_defs_to_svgmap(self) -> str:
@@ -156,7 +164,7 @@ class SvgmapContainer:
     content = ""
     for item in self.__container:
       if (self.__color_column_index is None):
-        iconId = self.defaultIconId
+        iconId = self.__defaultIconId
       else:
         iconId = item["metadatas"][self.__color_column_index]
 
