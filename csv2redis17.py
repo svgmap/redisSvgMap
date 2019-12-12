@@ -103,8 +103,10 @@ class Csv2redisClass():
     self.poi_size = ["-8", "-25", "19", "27"]  # x,y,width,height
 
     # 完全にカスタムなコンテンツ生成ルーチンを組み込むI/F
-    # customDataGeneratorオブジェクトは、outputSvgContent([poiObj],svgc:SvgmapContainer):str(xmlStr)を実装している必要がある
-    # poiObj(Dict) = {"lat", "lng", "title", "metadata"}
+    # customDataGeneratorオブジェクトは、outputSvgContent([poiObj],svgc:SvgmapContainer):str(xmlStr)
+    #   poiObj(Dict) = {"lat", "lng", "title", "metadata"}
+    # regist_defs(svgc:SvgmapContainer)
+    # を実装している必要がある
     #    svgcにはヘッダやCRSが設定されています
     self.customDataGenerator = None
     # customLowResGeneratorも同様　(TBD)
@@ -850,7 +852,8 @@ class Csv2redisClass():
       dtype=None,  # あらかじめわかっている場合のデータタイプ(低解像タイルか実データタイル化がわかる)
       lowResImage=False,  # 低解像タイルをビットイメージにする場合
       onMemoryOutput=False,  # ライブラリとして使用し、データをオンメモリで渡す場合
-      returnBitImage=False):  # オンメモリ渡し(上がTrue限定)のとき、低解像ビットイメージデータを要求する場合
+      returnBitImage=False,  # オンメモリ渡し(上がTrue限定)のとき、低解像ビットイメージデータを要求する場合
+      globalMetadataText=None):  # SVG要素の次の行に入れる文字列(当然XMLに準拠した要素文字列もOK)
     # saveSvgMapTileを置き換え、SVGMapコンテンツをSAX的に直生成することで高速化を図る　確かに全然早くなった。pythonってやっぱりゆる系？・・・ 2019/1/16
     # outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
 
@@ -870,13 +873,18 @@ class Csv2redisClass():
     svgc = SvgmapContainer(
         self.getMetaExclLatLng(csvSchema, latCol, lngCol),
         self.getMetaExclLatLng(self.getSchemaTypeStrArray(csvSchemaType), latCol, lngCol))
+    if ( globalMetadataText is not None ):
+      svgc.appendHeader(globalMetadataText + "\n")
 
-    if (self.customDataGenerator is None):
+    if (  hasattr(self.customDataGenerator,"regist_defs") ):
+      self.customDataGenerator.regist_defs(svgc)
+    else:
       svgc.regist_size(self.poi_size)
       svgc.regist_defs(self.poi_color)
       svgc.color_column_index = self.poi_index
-    else:
-      self.customDataGenerator.regist_defs(svgc)
+#    svgc.regist_size(self.poi_size)
+#    svgc.regist_defs(self.poi_color)
+#    svgc.color_column_index = self.poi_index
 
     if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
       dtype = b"string"
@@ -1026,7 +1034,7 @@ class Csv2redisClass():
         if (self.customDataGenerator is None):
           svgc.add_content(title, poi[latCol], poi[lngCol], self.getMetaExclLatLng(poi, latCol, lngCol))
         else:
-          poiObj = {"lat": lat, "lng": lng, "title": title, "metadata": self.getMetaExclLatLng(poi, latCol, lngCol)}
+          poiObj = {"lat": lat, "lng": lng, "title": title, "metadata": self.getMetaExclLatLng(poi, latCol, lngCol),"poi":poi}
           outPoiL.append(poiObj)
 
     #print(svgc.output_str_to_container())

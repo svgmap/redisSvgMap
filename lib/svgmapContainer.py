@@ -131,7 +131,7 @@ class SvgmapContainer:
     return self.__container
 
   # regist a poi
-  def add_content(self, title, lat, lng, metadatas: list) -> None:
+  def add_content(self, title, lat, lng, metadatas: list, customXMLAttrStr="") -> None:
     """
         POIを登録する関数
           Input
@@ -139,13 +139,13 @@ class SvgmapContainer:
     """
     if self.__color_column_index is None:
       # デフォルトの色を使用してプロット（既存と同じ青でいいかなぁ）
-      self.__container.append({"title": title, "lat": lat, "lng": lng, "metadatas": metadatas})
+      self.__container.append({"title": title, "lat": lat, "lng": lng, "metadatas": metadatas,"customXMLAttrStr":customXMLAttrStr})
       pass
     else:
       #
       # print(self.__data_property_type)
       if self.__data_property_type[self.__color_column_index] is str:
-        self.__container.append({"title": title, "lat": lat, "lng": lng, "metadatas": metadatas})
+        self.__container.append({"title": title, "lat": lat, "lng": lng, "metadatas": metadatas,"customXMLAttrStr":customXMLAttrStr})
         pass
       #
       if self.__data_property_type[self.__color_column_index] is int:
@@ -168,14 +168,18 @@ class SvgmapContainer:
       else:
         iconId = item["metadatas"][self.__color_column_index]
 
-      content += ("  <use xlink:href='#%s' xlink:title='%s' transform='ref(svg,%s,%s)' content='%s'/>\n" % (
+      content += ("  <use xlink:href='#%s' xlink:title='%s' transform='ref(svg,%s,%s)' content='%s' %s x='0' y='0'/>\n" % (
           iconId,
           self.xmlEscape(escape(item["title"])),
           100 * math.floor(float(item["lng"]) * 1000000) / 1000000,
           -100 * math.floor(float(item["lat"]) * 1000000) / 1000000,
           self.xmlEscape(escape(",".join(item["metadatas"]))),
+          item["customXMLAttrStr"],
       ))
     return content
+    
+  def appendHeader(self, globalMetadataText): # ちょっと適当な関数だけれど・・ 2019/12/12
+    self.__header.append(globalMetadataText + "\n")
 
   def xmlEscape(self, str):  # escapeはちょっとまずいので・・・
     ans = str.replace("'", "&apos;")
