@@ -882,9 +882,6 @@ class Csv2redisClass():
       svgc.regist_size(self.poi_size)
       svgc.regist_defs(self.poi_color)
       svgc.color_column_index = self.poi_index
-#    svgc.regist_size(self.poi_size)
-#    svgc.regist_defs(self.poi_color)
-#    svgc.color_column_index = self.poi_index
 
     if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
       dtype = b"string"
@@ -896,6 +893,7 @@ class Csv2redisClass():
     else:
       lat0, lng0, lats, lngs = self.geoHashToLatLng(geoHash)
       thisZoom = len(geoHash)
+      svgc.setViewBox(lng0,lat0,lngs,lats)
 
     if dtype is None:
       dtype = self.r.type(self.ns + geoHash)

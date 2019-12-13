@@ -35,6 +35,8 @@ class SvgmapContainer:
 
     self.__body = []
     self.__header = []
+    self.__headerViewBox =[]
+    self.__headerCTAGS =[]
     self.__footer = []
     self.__container = []
     self.__poi_size = []
@@ -50,13 +52,23 @@ class SvgmapContainer:
     self.__header.append("' data-property-type='")  # これいるんでしたっけ？ オーサリング系で使ってます
     self.__header.append(",".join(self.__data_property_type))
     self.__header.append(
-        "' viewBox='9000,-5500,10000,10000' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>\n"
+        "' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' "
     )
-    self.__header.append(
+    self.__headerCTAGS.append(
         "<globalCoordinateSystem srsName='http://purl.org/crs/84' transform='matrix(100,0,0,-100,0,0)'/>\n")
 
     self.__footer.append("</svg>")
-
+    self.setViewBox(90,55,100,100) # in lng(x) lat(y) geoCoordinates
+    
+  def setViewBox(self,x,y,w,h):
+    self.__headerViewBox.clear()
+    self.__headerViewBox.append("viewBox='")
+    self.__headerViewBox.append("{:.3f},".format(100 * x))
+    self.__headerViewBox.append("{:.3f},".format(-100 * y))
+    self.__headerViewBox.append("{:.3f},".format(100 * w ))
+    self.__headerViewBox.append("{:.3f}".format(100 * h ))
+    self.__headerViewBox.append("' >\n")
+    
   # defs tag @ svg
   @property
   def defs(self) -> str:
@@ -179,7 +191,7 @@ class SvgmapContainer:
     return content
     
   def appendHeader(self, globalMetadataText): # ちょっと適当な関数だけれど・・ 2019/12/12
-    self.__header.append(globalMetadataText + "\n")
+    self.__headerCTAGS.append(globalMetadataText + "\n")
 
   def xmlEscape(self, str):  # escapeはちょっとまずいので・・・
     ans = str.replace("'", "&apos;")
@@ -207,6 +219,8 @@ class SvgmapContainer:
     str_output = ""
     # header
     str_output += "".join(self.__header)
+    str_output += "".join(self.__headerViewBox)
+    str_output += "".join(self.__headerCTAGS)
 
     str_output += self.defs
     # adding contents
