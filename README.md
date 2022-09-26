@@ -1,5 +1,5 @@
 # redisSvgMap
-Dynamic Content Generator and Web Service for Quad Tree Composite Tilied SVGMap using Redis
+Dynamic Content Generator and Web Service for [Quad Tree Composite Tilied](https://satakagi.github.io/mapsForWebWS2020-docs/QuadTreeCompositeTilingAndVectorTileStandard.html) SVGMap using Redis
 
 ## Dev Env
 Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
