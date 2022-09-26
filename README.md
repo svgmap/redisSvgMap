@@ -1,6 +1,9 @@
 # redisSvgMap
 Dynamic Content Generator and Web Service for [Quad Tree Composite Tilied](https://satakagi.github.io/mapsForWebWS2020-docs/QuadTreeCompositeTilingAndVectorTileStandard.html) SVGMap using Redis
 
+## About
+Unlike [SVGMapTools](https://github.com/svgmap/svgMapTools/), this software provides the ability to efficiently perform Quad Tree Composite Tiling on large amounts of point data that are updated successively. Redis, an on-memory database management system, is used for this purpose. And a web service that uses this functionality to provide successively updatable location information has also been implemented.
+
 ## Dev Env
 Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 
