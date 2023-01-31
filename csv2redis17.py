@@ -58,10 +58,10 @@ from lib.svgmapContainer import SvgmapContainer, Tag
 
 class Csv2redisClass():
 
-  def __init__(self):
+  def __init__(self, dbNumb=0):
     #global 変数たち
     #self.r
-    self.r = redis.Redis(host='localhost', port=6379, db=0)
+    self.r = redis.Redis(host='localhost', port=6379, db=dbNumb)
     self.listLimit = 500
     self.lowresMapSize = 128  # 集約データの分解能の定義(この数値のスクエア)　この実装では2の倍数である必要がある(上の階層の倍という意味で)
     #self.lowResIsBitImage = True
