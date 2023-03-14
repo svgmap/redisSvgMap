@@ -1,4 +1,5 @@
-import sys, os
+import sys
+import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.svgmapContainer import SvgmapContainer, Tag
 
@@ -24,12 +25,12 @@ class DataGenerator(object):
     ]  # poiColor = f1:#FF0000,f2:#FFFF00,f3:#0000FF -> split(",") -> split(":")
     # self.colorColumn = 4
 
-  def regist_defs(self, svgc):
+  def regist_defs(self, svgc, schema):
     svgc.regist_size(self.poiSize)
     svgc.color_column_index = None
     svgc.regist_defs(self.poiColor)
 
-  def outputSvgContent(self, outPoiL, svgc):
+  def outputSvgContent(self, outPoiL, svgc, schema):
 
     for poi in outPoiL:
       # poi:  {"lat": lat, "lng": lng, "title": title, "metadata": metadata}
@@ -60,7 +61,7 @@ class DataGenerator2(object):
     ]  # poiColor = f1:#FF0000,f2:#FFFF00,f3:#0000FF -> split(",") -> split(":")
     # self.colorColumn = 4
 
-  def regist_defs(self, svgc):  # circleで
+  def regist_defs(self, svgc, schema):  # circleで
     firstIcon = True
     defs = Tag("defs")
     for color in self.poiColor:
@@ -80,7 +81,33 @@ class DataGenerator2(object):
 
     svgc.add_tag(defs)
 
-  def outputSvgContent(self, outPoiL, svgc):
+  def outputSvgContent(self, outPoiL, svgc, schema):
+
+    for poi in outPoiL:
+      # poi:  {"lat": lat, "lng": lng, "title": title, "metadata": metadata}
+      svgc.add_content(poi["title"], poi["lat"], poi["lng"], poi["metadata"])
+
+    return (svgc.output_str_to_container())
+
+# カスタマイズしたdefsを作るパターン2 2022/08/05
+# スキーマで指定されているアイコンを使用するicon定義defsを生成する
+# csv2redis16.1とほぼ互換の機能を提供する
+
+
+class DataGenerator3(object):
+
+  def __init__(self):
+    self.poi_size = ["-8", "-25", "19", "27"]  # x,y,width,height
+    self.poi_color = [{"flag": "f1", "color": "mappin.png"}]
+
+  def regist_defs(self, svgc, schema):  # カスタムのアイコン定義を可能にする。ただし、webApp:redisDatasetBuilder.htmlでschemaに新設した'defaultIconPath'を使っている
+    if "defaultIconPath" in schema:
+      self.poi_color[0]["color"] = schema["defaultIconPath"]
+    svgc.regist_size(self.poi_size)
+    svgc.regist_defs(self.poi_color)
+    svgc.color_column_index = None
+
+  def outputSvgContent(self, outPoiL, svgc, schema):
 
     for poi in outPoiL:
       # poi:  {"lat": lat, "lng": lng, "title": title, "metadata": metadata}

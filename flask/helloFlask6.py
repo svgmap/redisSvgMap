@@ -8,9 +8,9 @@
 # 2019/08/20 Rev17対応
 # 2023/01/31 threadのAPI更新に対応, --dbnumb, --port option
 
-#Lesson0
+# Lesson0
 # https://www.pytry3g.com/entry/Flask-Quickstart
-#Lesson1
+# Lesson1
 # https://auth0.com/blog/jp-developing-restful-apis-with-python-and-flask/
 # Print log to console: https://stackoverflow.com/questions/5574702/how-to-print-to-stderr-in-python
 
@@ -25,7 +25,8 @@
 from flask import Flask, request, send_from_directory, Response, send_file
 from flask_cors import CORS
 import urllib.parse
-import sys, os
+import sys
+import os
 import json
 import re
 import math
@@ -362,12 +363,12 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
 
 
 if __name__ == "__main__":
-  parser=argparse.ArgumentParser()
-  parser.add_argument('--dbnumb',default='0')
-  parser.add_argument('--port',default='5000')
-  args=parser.parse_args()
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--dbnumb', default='0')
+  parser.add_argument('--port', default='5000')
+  args = parser.parse_args()
   print('dbnumb : ', args.dbnumb)
   print('port : ', args.port)
-  redisDBNumber=int(args.dbnumb)
-  flaskPortNumber=int(args.port) 
-  app.run(host="0.0.0.0",port=flaskPortNumber,debug=True)
+  redisDBNumber = int(args.dbnumb)
+  flaskPortNumber = int(args.port)
+  app.run(host="0.0.0.0", port=flaskPortNumber, debug=True)

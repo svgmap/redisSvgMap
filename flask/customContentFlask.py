@@ -7,9 +7,9 @@
 # 2019/05/13 ついにサブレイヤー機能が大枠で完成！
 # 2019/08/20 Rev17対応
 
-#Lesson0
+# Lesson0
 # https://www.pytry3g.com/entry/Flask-Quickstart
-#Lesson1
+# Lesson1
 # https://auth0.com/blog/jp-developing-restful-apis-with-python-and-flask/
 # Print log to console: https://stackoverflow.com/questions/5574702/how-to-print-to-stderr-in-python
 
@@ -24,13 +24,15 @@
 from flask import Flask, request, send_from_directory, Response, send_file
 from flask_cors import CORS
 import urllib.parse
-import sys, os
+import sys
+import os
 import json
 import re
 import math
 from collections import OrderedDict
 # import pprint
 import threading
+import argparse
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from csv2redis17 import Csv2redisClass  # 上で上のディレクトリをappendしてるのでimportできる
@@ -41,6 +43,8 @@ app = Flask(__name__)
 CORS(app)
 
 now_registering = False  # POIの登録中を示すフラグ（登録をシングルに制限）
+
+redisDBNumber = 0
 
 generalHkey = True  # 個々のデータを投入するhmapのkey(これはgeoHashではなく、その下の個々のデータを入れる入れ物のハッシュキー(なのでどうでもいいといえばどうでもいい))をどうするか
 
@@ -88,7 +92,7 @@ class redisRegistThread(threading.Thread):
     self.progress = "INIT"
     self.jsStr = ""
     self.dbns = dsHash
-    self.csv2redis = Csv2redisClass()
+    self.csv2redis = Csv2redisClass(redisDBNumber)
     self.csv2redis.init(self.dbns)
     self.latCol = self.csv2redis.schemaObj.get("latCol")
     self.lngCol = self.csv2redis.schemaObj.get("lngCol")
@@ -165,7 +169,7 @@ class redisRegistThread(threading.Thread):
 @app.route("/svgmap/editPoint", methods=['POST'])
 def capturePost(dsHash=dbnsDefault):
   global redisRegistJob
-  if (isinstance(redisRegistJob, redisRegistThread) and redisRegistJob.isAlive()):
+  if (isinstance(redisRegistJob, redisRegistThread) and redisRegistJob.is_alive()):
     return ("Now registering.. Retry layer.")
 
   # print(request.headers, file=sys.stderr)
@@ -184,7 +188,7 @@ allLowResMapLen = 0
 @app.route("/svgmap/editStatus")
 def getEditStat(dsHash=dbnsDefault):
   # ISSUE dsHashを弁別していない
-  if (isinstance(redisRegistJob, redisRegistThread) and redisRegistJob.isAlive()):
+  if (isinstance(redisRegistJob, redisRegistThread) and redisRegistJob.is_alive()):
     regStat = redisRegistJob.progress
     if regStat == "S3_":
       regStat = "S3_" + str(redisRegistJob.csv2redis.getBuildAllLowResMapCount()) + "/" + str(allLowResMapLen)
@@ -196,7 +200,7 @@ def getEditStat(dsHash=dbnsDefault):
 
 @app.route("/svgmap/listSubLayers")
 def listSubLasyers():
-  csv2redis = Csv2redisClass()
+  csv2redis = Csv2redisClass(redisDBNumber)
   sl = csv2redis.listSubLayers()
   print(sl)
   dsl = {}
@@ -214,7 +218,7 @@ def buildLayer():
   jsStr = (request.data).decode()
   jsonData = json.loads(jsStr)
   print("called buildLayer: parsedJson: ", jsonData)
-  csv2redis = Csv2redisClass()
+  csv2redis = Csv2redisClass(redisDBNumber)
   ans = csv2redis.registSchema(jsonData)
   if (ans == True):
     return ("OK")
@@ -274,7 +278,7 @@ def getData(poiDatas, latCol, lngCol):
 def deleteAllData(dsHash=dbnsDefault):
   if checkLock():
     print("Get delete all data command")
-    csv2redis = Csv2redisClass()
+    csv2redis = Csv2redisClass(redisDBNumber)
     csv2redis.init(dsHash)
     dc = csv2redis.deleteAllData()
     clearLock()
@@ -287,7 +291,7 @@ def deleteAllData(dsHash=dbnsDefault):
 def removeDataset(dsHash):
   if checkLock():
     print("Get removeDataset command")
-    csv2redis = Csv2redisClass()
+    csv2redis = Csv2redisClass(redisDBNumber)
     csv2redis.init(dsHash)
     dc = csv2redis.deleteAllData(True)
     clearLock()
@@ -337,9 +341,10 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
     # print("tile Numb:" + str(geoHash), file=sys.stderr)
     # print("tileName:" + tileName, file=sys.stderr)
 
-    csv2redis = Csv2redisClass()
-    #    csv2redis.customDataGenerator = customDataMapper.DataGenerator()
-    csv2redis.customDataGenerator = customDataMapper.DataGenerator2()
+    csv2redis = Csv2redisClass(redisDBNumber)
+    # csv2redis.customDataGenerator = customDataMapper.DataGenerator()
+    # csv2redis.customDataGenerator = customDataMapper.DataGenerator2()
+    csv2redis.customDataGenerator = customDataMapper.DataGenerator3()
 
     csv2redis.init(dsHash)
     # print(csv2redis.csvSchema, file=sys.stderr)
@@ -353,7 +358,7 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
       pngByteIo = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True, True)
       return send_file(pngByteIo, mimetype='image/png')
   elif tileName.startswith("svgMap") and tileName.endswith(".svg"):  # for root svg content
-    csv2redis = Csv2redisClass()
+    csv2redis = Csv2redisClass(redisDBNumber)
     csv2redis.init(dsHash)
     svgContent = csv2redis.saveSvgMapTileN(None, None, LowResImage, True)
     return Response(svgContent, mimetype='image/svg+xml')
@@ -362,4 +367,12 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
 
 
 if __name__ == "__main__":
-  app.run()
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--dbnumb', default='0')
+  parser.add_argument('--port', default='5000')
+  args = parser.parse_args()
+  print('dbnumb : ', args.dbnumb)
+  print('port : ', args.port)
+  redisDBNumber = int(args.dbnumb)
+  flaskPortNumber = int(args.port)
+  app.run(host="0.0.0.0", port=flaskPortNumber, debug=True)

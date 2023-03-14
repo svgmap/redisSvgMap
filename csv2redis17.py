@@ -60,7 +60,7 @@ class Csv2redisClass():
 
   def __init__(self, dbNumb=0):
     #global 変数たち
-    #self.r
+    # self.r
     self.r = redis.Redis(host='localhost', port=6379, db=dbNumb)
     self.listLimit = 500
     self.lowresMapSize = 128  # 集約データの分解能の定義(この数値のスクエア)　この実装では2の倍数である必要がある(上の階層の倍という意味で)
@@ -262,7 +262,7 @@ class Csv2redisClass():
     else:
       src = self.r.lrange(self.ns + ans, 0, -1)  # 分割元のデータ
 
-    #以下pipelineを使うと早くなるかな
+    # 以下pipelineを使うと早くなるかな
     pipe = self.r.pipeline()
     # lowResMap = {}  # ここに、最大lowresMapSize^2のhashKey数で低解像度用のメッシュ型カバレッジデータ構造が構築される
     count = 0
@@ -292,7 +292,7 @@ class Csv2redisClass():
     # print("storeLowResDataToRedis", key, "  map:", lowResMap)
     self.r.set(self.ns + key, pickle.dumps(lowResMap))
     #ToDo: 上の階層に遡ってLowResを更新する必要がある
-    #issue: この処理はredisアクセスおよびpickleパースが必要なのでpython上でキャッシュできると良いかも？
+    # issue: この処理はredisアクセスおよびpickleパースが必要なのでpython上でキャッシュできると良いかも？
     # parentKey = key
     # childLowResMap = lowResMap
 
@@ -362,7 +362,7 @@ class Csv2redisClass():
         # thisTile = self.r.get(key)
         # if thisTile == b"OVERFLOW": # 更新ではなくて新規なのでこれは不要
         #  thisTile = {}
-        #else:
+        # else:
         #  thisTile = pickle.loads(thisTile)
 
         childTiles = []
@@ -622,7 +622,7 @@ class Csv2redisClass():
           pipe.llen(self.ns + key)
         keyDict[key] = True
     sizes = pipe.execute()
-    keyDict = {}  #そうすればこれ以下はやらなくても勝手にできてるのでは？
+    keyDict = {}  # そうすればこれ以下はやらなくても勝手にできてるのでは？
     for j in range(len(sizes)):
       keyDict[keyList[j]] = sizes[j]
     # print(sizes)
@@ -717,7 +717,7 @@ class Csv2redisClass():
       if ans in self.overFlowKeys:
         # 下のオーバーフローキーの確認がかなり重たい rev2と比べてrev3が８倍ぐらい重いのを改善
         o = True
-      else:  ############################ この辺　今作業中です！！！
+      else:  # この辺　今作業中です！！！
         rType = self.r.type(self.ns + ans)
         if rType == b"string":
           # overflowed lowResMap
@@ -725,7 +725,7 @@ class Csv2redisClass():
           self.overFlowKeys[ans] = True
           print("add over flow keys: " + ans, file=sys.stderr)
         elif rType == b"list":
-          ## realData
+          # realData
           tileDataSize = self.r.llen(self.ns + ans)
           if tileDataSize < self.listLimit:
             # overflowしてないキーはlist構造で個々のPOIをCSV文字列で保存している
@@ -847,13 +847,13 @@ class Csv2redisClass():
     return (ans)
 
   def saveSvgMapTileN(
-      self,
-      geoHash=None,  # タイルハッシュコード
-      dtype=None,  # あらかじめわかっている場合のデータタイプ(低解像タイルか実データタイル化がわかる)
-      lowResImage=False,  # 低解像タイルをビットイメージにする場合
-      onMemoryOutput=False,  # ライブラリとして使用し、データをオンメモリで渡す場合
-      returnBitImage=False,  # オンメモリ渡し(上がTrue限定)のとき、低解像ビットイメージデータを要求する場合
-      globalMetadataText=None):  # SVG要素の次の行に入れる文字列(当然XMLに準拠した要素文字列もOK)
+          self,
+          geoHash=None,  # タイルハッシュコード
+          dtype=None,  # あらかじめわかっている場合のデータタイプ(低解像タイルか実データタイル化がわかる)
+          lowResImage=False,  # 低解像タイルをビットイメージにする場合
+          onMemoryOutput=False,  # ライブラリとして使用し、データをオンメモリで渡す場合
+          returnBitImage=False,  # オンメモリ渡し(上がTrue限定)のとき、低解像ビットイメージデータを要求する場合
+          globalMetadataText=None):  # SVG要素の次の行に入れる文字列(当然XMLに準拠した要素文字列もOK)
     # saveSvgMapTileを置き換え、SVGMapコンテンツをSAX的に直生成することで高速化を図る　確かに全然早くなった。pythonってやっぱりゆる系？・・・ 2019/1/16
     # outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
 
@@ -868,16 +868,16 @@ class Csv2redisClass():
     csvSchemaType = self.schemaObj.get("type")
     titleCol = self.schemaObj.get("titleCol")
     #    print(dtype)
-    #print(csvSchema)
+    # print(csvSchema)
     #print([str] * len(csvSchema))
     svgc = SvgmapContainer(
         self.getMetaExclLatLng(csvSchema, latCol, lngCol),
         self.getMetaExclLatLng(self.getSchemaTypeStrArray(csvSchemaType), latCol, lngCol))
-    if ( globalMetadataText is not None ):
+    if (globalMetadataText is not None):
       svgc.appendHeader(globalMetadataText + "\n")
 
-    if (  hasattr(self.customDataGenerator,"regist_defs") ):
-      self.customDataGenerator.regist_defs(svgc)
+    if (hasattr(self.customDataGenerator, "regist_defs")):
+      self.customDataGenerator.regist_defs(svgc, self.schemaObj)
     else:
       svgc.regist_size(self.poi_size)
       svgc.regist_defs(self.poi_color)
@@ -893,7 +893,7 @@ class Csv2redisClass():
     else:
       lat0, lng0, lats, lngs = self.geoHashToLatLng(geoHash)
       thisZoom = len(geoHash)
-      svgc.setViewBox(lng0,lat0,lngs,lats)
+      svgc.setViewBox(lng0, lat0, lngs, lats)
 
     if dtype is None:
       dtype = self.r.type(self.ns + geoHash)
@@ -953,7 +953,7 @@ class Csv2redisClass():
             if (returnBitImage):  # オンメモリでのビットイメージ出力要求
               img_io = BytesIO()
               img.save(img_io, "PNG")
-              #img = img.convert('RGB') # jpegの場合はARGB受け付けてくれない
+              # img = img.convert('RGB') # jpegの場合はARGB受け付けてくれない
               #img.save(img_io, 'JPEG', quality=70)
               img_io.seek(0)
               return (img_io)  # ちょっと強引だがここで出力して終了
@@ -979,12 +979,12 @@ class Csv2redisClass():
         g.fill = 'blue'
         g.visibleMinZoom = Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1)
       else:  # レベル0のレイヤルートコンテナの場合 (このルーチン　まずくない？)
-        #outStrL.append(
+        # outStrL.append(
         # このdefsはオーサリングシステムのアイコンがレイヤールートのdefsを参照していることによるので、何もアイコンはないけどしっかりdefsしておく必要がある！
         # y.sakiuraさんのシステムでは、無条件で共通のdefsを全部のタイルに置くようになっているので大丈夫になってるからパスする
         #    "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
-        #)
-        #outStrL.append("<g>\n")
+        # )
+        # outStrL.append("<g>\n")
         pass
 
       for i, exs in enumerate(ceFlg):  # link to child tiles
@@ -1032,24 +1032,24 @@ class Csv2redisClass():
         if (self.customDataGenerator is None):
           svgc.add_content(title, poi[latCol], poi[lngCol], self.getMetaExclLatLng(poi, latCol, lngCol))
         else:
-          poiObj = {"lat": lat, "lng": lng, "title": title, "metadata": self.getMetaExclLatLng(poi, latCol, lngCol),"poi":poi}
+          poiObj = {"lat": lat, "lng": lng, "title": title, "metadata": self.getMetaExclLatLng(poi, latCol, lngCol), "poi": poi}
           outPoiL.append(poiObj)
 
-    #print(svgc.output_str_to_container())
+    # print(svgc.output_str_to_container())
 
     if (onMemoryOutput):  # 文字列として返却するだけのオプション
-      #return "".join(outStrL)
+      # return "".join(outStrL)
       if (self.customDataGenerator is None):
         return svgc.output_str_to_container()
       else:
-        return self.customDataGenerator.outputSvgContent(outPoiL, svgc)
+        return self.customDataGenerator.outputSvgContent(outPoiL, svgc, self.schemaObj)
     else:
       with open(self.targetDir + Csv2redisClass.svgFileNameHd + geoHash + ".svg", mode='w', encoding='utf-8') as f:
         # f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
         if (self.customDataGenerator is None):
           f.write(svgc.output_str_to_container())
         else:
-          f.write(self.customDataGenerator.outputSvgContent(outPoiL, svgc))
+          f.write(self.customDataGenerator.outputSvgContent(outPoiL, svgc, self.schemaObj))
         # f.flush() # ひとまずファイルの書き出しはシステムお任せにしましょう・・
 
   def xmlEscape(self, str):
@@ -1063,23 +1063,23 @@ class Csv2redisClass():
 
     self.ns = redisNs
 
-    #if (isinstance(self.r, redis.Redis)):
+    # if (isinstance(self.r, redis.Redis)):
     #  print("Skip redis gen")
     #  pass
-    #else:
+    # else:
     #  self.r = redis.Redis(host='localhost', port=6379, db=0)
 
     if (len(self.schemaObj.get("schema")) == 0 or self.schemaObj.get("namespace") != self.ns):
       if self.r.exists(self.ns + "schema"):
         self.schemaObj = pickle.loads(self.r.get(self.ns + "schema"))
         print("[[[INIT]]]   load schemaObj:", self.schemaObj, "  NS:", redisNs)
-        #schemaObj={
+        # schemaObj={
         #  "schema" : schemaObj.get("schema"),
         #  "type" : schemaObj.get("type"),
         #  "latCol" : schemaObj.get("latCol"),
         #  "lngCol" : schemaObj.get("lngCol"),
         #  "titleCol": schemaObj.get("titleCol")
-        #}
+        # }
     else:
       print("[[[INIT]]]    SKIP load schema : NS: ", redisNs, file=sys.stderr)
       pass
