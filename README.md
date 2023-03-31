@@ -17,11 +17,11 @@ Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 
 ## Web Service
 ### windows
-* ``runFlask.bat``
+* ``runFlaskCustom.bat``
 * Access http://localhost:5000/svgmap/
 
 ### linux
-* ``runFlask.sh``
+* ``runFlaskCustom.sh``
 * Access http://localhost:5000/svgmap/
 * nohup ./runFlask.sh >1.txt 2>&1 &
 
