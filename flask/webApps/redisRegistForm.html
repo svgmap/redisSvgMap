@@ -92,18 +92,17 @@ function readCsv(file, charset){
 	var reader = new FileReader();
 	reader.onprogress = updateProgress;
 	reader.onload = (function(theFile) {
-		csv = theFile.target.result;
-		csv = csv.replace("\r","");
-		csv = csv.split("\n");
-//		console.log("file:",csv);
+		console.log("load completed");
+		csv = parseAndEscapeCsv(theFile.target.result);
+		console.log("parse completed");
 		var output = [];
 		var overlimit = false;
 		output.push('<table border="1">');
 		for ( var i = 0 ; i < csv.length ; i++ ){
-			if ( csv[i] == "" ){
+			if ( csv[i].length<2 ){
 				continue;
 			}
-			var csvline = csv[i].split(",");
+			var csvline = csv[i];
 			if (csvline.length > cols ){
 				cols = csvline.length;
 			}
@@ -167,7 +166,7 @@ function selectpart(event){
 		if ( !csv[i] || csv[i] == "" ){
 			continue;
 		}
-		var csvline = csv[i].split(",");
+		var csvline = csv[i];
 		console.log(csvline.length,csvline);
 		if ( csvline.length > 0){
 			output.push('<tr>');
@@ -351,8 +350,7 @@ function pushCsv(){
 			continue;
 		}
 		var jData ={};
-		var csvLine = csv[i];
-		var csvData = csvLine.split(",");
+		var csvData = csv[i];
 		for ( var j = 0 ; j < csvData.length ; j++){
 			if ( csvSchema[j]!="-"){
 				jData[csvSchema[j]] = csvData[j];
@@ -476,9 +474,60 @@ function deleteAllDBcancel(){
 	document.getElementById("delAll").value="DB全削除";
 }
 
+// https://qiita.com/weal/items/5aa94235c40d60ef2f0c
+function parseCsv(str) {
+	var i, c, r, q, l, m, v, j, len=str.length, rows = [], row = [];
+	m = (l = str.indexOf('\r\n')<0 ? str.indexOf('\r')<0 ? '\n' : '\r' : '\r\n').length; //改行記号を決定
+	for(i=0,c=r=-1; i<len; i++) {
+		if (str.charAt(i) === '"') { //quoted
+			for(j=0,q=i+1; q<len; j++,q++) { //閉quotを探す
+				q = (q=str.indexOf('"',q)) < 0 ? len+1 : q; //quotの位置、無いなら末尾まで
+				if (str.charAt(++q) !== '"') {break;}       //""なら継続
+			}
+			row.push((v=str.substring(i+1,(i=q)-1),j) ? v.replace(/""/g,'"') : v);
+		} else { //not quoted
+			if (c<i) {c=str.indexOf(',',i);c=c<0?len:c;} //直近のカンマ位置と
+			if (r<i) {r=str.indexOf(l,i);r=r<0?len:r;}   //直近の改行位置を調べ
+			row.push(str.substring(i,(i=c<r?c:r)));      //そこまでを値とする
+		}
+		if (i === r || l === (m>1?str.substr(i,m):str.charAt(i))) {rows.push(row);row=[];i+=m-1;}
+	}
+	str.charAt(i-1) === ',' && row.push(''); //,で終わる
+	row.length && rows.push(row);
+	str.substr(i-1,m) === l && rows.push([]); //最後の改行を無視する場合はコメントアウト
+	return rows;
+};
+
+var escapeChars={
+	'"' : "&#34",
+	',' : "&#44",
+	'\r' : "&#13",
+	'\n' : "&#10",
+};
+
+function parseAndEscapeCsv(txt){
+	var csv = parseCsv(txt);
+	console.log("parsed");
+	var regs=[];
+	for ( var key in escapeChars){
+		regs.push( [new RegExp(key , 'gm'), escapeChars[key] ]);
+	}
+	
+	for ( var row of csv){
+		for (var i = 0 ; i < row.length; i++){
+			var res = row[i];
+			for ( var reg of regs){
+				res = res.replace(reg[0], reg[1])
+			}
+			row[i]=res;
+		}
+	}
+	console.log(csv)
+	return (csv);
+}
 </script>
 <body>
-<h2>Redis Regist Form  for <span id="subLayerName"></span></h2>
+<h2>Regist Form  for <span id="subLayerName"></span></h2>
 <div></div>
 <div>CSV:<input type="file" name="csv" id="fileInput" >
  charset:

@@ -99,10 +99,14 @@ class DataGenerator3(object):
   def __init__(self):
     self.poi_size = ["-8", "-25", "19", "27"]  # x,y,width,height
     self.poi_color = [{"flag": "f1", "color": "mappin.png"}]
+    self.fallbackIcons = ["pin_blue.png", "pin_cyan.png", "pin_green.png", "pin_yellow.png", "pin_orange.png", "pin_pink.png", "pin_red.png", "pin_purple.png", "pin_red_cross.png", "pin_green_cross.png", "pin_blue_cross.png", "pin_pink_cross.png"] # defaultIconPathがなく、defaultIconがあった場合のフォールバック
 
   def regist_defs(self, svgc, schema):  # カスタムのアイコン定義を可能にする。ただし、webApp:redisDatasetBuilder.htmlでschemaに新設した'defaultIconPath'を使っている
     if "defaultIconPath" in schema:
       self.poi_color[0]["color"] = schema["defaultIconPath"]
+    elif "defaultIcon" in schema: #defaultIconPathがなく、defaultIconで番号指定されているだけのケースへのフォールバック
+      self.poi_color[0]["color"] = self.fallbackIcons[int(schema["defaultIcon"])]
+
     svgc.regist_size(self.poi_size)
     svgc.regist_defs(self.poi_color)
     svgc.color_column_index = None

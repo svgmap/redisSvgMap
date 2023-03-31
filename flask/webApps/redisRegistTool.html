@@ -8,12 +8,12 @@
 <script>
 var redisSvgMapRoot;
 onload=function(){
-	console.log("onLoad authoring tools tests for tiled maps:", location);
+	console.log("onLoad redis svgmap tools:", location);
 	redisSvgMapRoot = location.href.substring(0,location.href.lastIndexOf("/svgmap/"));
 	console.log("redisSvgMapRoot:", redisSvgMapRoot);
-	setTimeout(initAuthoringUI,10);
+//	setTimeout(initAuthoringUI,10);
 	setTimeout(addListener,10);
-	setTimeout(listSubLayers,10);
+	setTimeout(function(){listSubLayers(0)},10);
 }
 
 var currentSubLayerHash ="s2_";
@@ -36,7 +36,7 @@ function addListener(){
 
 
 var subLayers ={};
-function listSubLayers(selIndex){
+function listSubLayers(selIndex, layerKeyOptional){
 	
 	oldOpts = subLayersSel.childNodes;
 	for ( var i = oldOpts.length -1 ; i >= 0 ; i-- ){
@@ -47,15 +47,19 @@ function listSubLayers(selIndex){
 	xhr.open("GET", "listSubLayers");
 	xhr.send();
 	xhr.addEventListener("load",function(ev){
-//		console.log("listSubLayers:",ev.target.responseText);
+		console.log("listSubLayers:",ev.target.responseText);
 		json = JSON.parse(ev.target.responseText);
 		subLayers = json;
-		console.log("JSON:",json);
+		console.log("listSubLayers JSON:",json);
 		var i = 0;
 		var opt;
 		for ( key in json ){
+			console.log("key:",key, " val:",json[key]);
 			opt = document.createElement("option");
 			opt.value = key;
+			if ( layerKeyOptional && key == layerKeyOptional){
+				opt.selected = true;
+			}
 			opt.innerText = json[key];
 			if ( selIndex != undefined  && selIndex == i){
 				opt.selected = true;
@@ -63,13 +67,11 @@ function listSubLayers(selIndex){
 			subLayersSel.appendChild(opt);
 			++i;
 		}
-		if ( selIndex == -1 ){
-			opt.selected = true;
-		}
+//		if ( selIndex == -1 ){
+//			opt.selected = true;
+//		}
 		if ( selIndex != undefined ){
 			changeSubLayers(null,selIndex);
-		} else {
-			changeSubLayers(null,0);
 		}
 	});
 }
@@ -79,7 +81,6 @@ var authoringToolProps;
 var timeAttr = -1;
 function initAuthoringUI(){
 	timeAttr = -1;
-//	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
 	console.log(this);
 //	console.log(layerID,(svgMap.getSvgImagesProps())[layerID].metaSchema);
 	
@@ -87,7 +88,6 @@ function initAuthoringUI(){
 	
 	console.log("svgImageProps.metaSchema:",svgImageProps.metaSchema);
 //	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
-//	metaSchema = svgImageProps.metaSchema.split(",");
 	metaSchema = getSchema();
 	authoringToolProps = svgMapAuthoringTool.initPOItools(document.getElementById("poiTools"),layerID,editConf,null,false,true);
 	console.log("metaSchema:", metaSchema);
@@ -308,11 +308,11 @@ function setSubLayerMetaSchema2RootLayer(){
 	for ( key in svgImageProps.childImages){
 		childId = key;
 	}
-	console.log("childId:",childId);
 	var svgImages = svgMap.getSvgImages();
 	var svgImagesProps = svgMap.getSvgImagesProps();
 	var currentSubLayerDoc = svgImages[childId];
 	var currentSubLayerProps = svgImagesProps[childId];
+	if ( ! currentSubLayerProps ){ return };
 	var subLayerMetaSchema = currentSubLayerProps.metaSchema.split(",");
 	
 	svgImage.documentElement.setAttribute("property",currentSubLayerDoc.documentElement.getAttribute("property"));
@@ -332,12 +332,15 @@ function validateData(metadata){
 		return (false );
 	}
 	for ( var i = 0 ; i < metadata.length ; i++ ){
+		console.log(metadata[i],metaSchema[i],i);
 		switch ((metaSchema[i].type).toLowerCase()){
 		case "n": // check if Number
 		case "number": // check if Number
 			if ( isNaN(metadata[i] )){
-				console.log(metadata[i] , " should be Number.");
-				return ( false );
+				if ( metadata[i] !="-"  ){
+					console.log(metadata[i] , " should be Number.");
+					return ( false );
+				}
 			}
 			break;
 		}
@@ -377,11 +380,9 @@ function changeSubLayers(event,numb){
 
 </script>
 <body>
-<h2>RedisPoiServerAuthoringTools</h2>
-Sub layer: <select id="subLayersSel"  onchange="changeSubLayers(event)">
+<h2>Registrable POI layers</h2>
+Sub layer: <select id="subLayersSel"  onchange="changeSubLayers(event)"></select>
 <input type="button" onClick="window.open('redisDatasetBuilder.html','sub','width=1000,height=400');return false;" value="Manage sub layers"/>
-<!--<option value="s2_">default</option>-->
-</select>
 <hr>
 <div id="poiTools"></div>
 <input type="button" value="レイヤー再読み込み" onClick="reLoadLayer()"/>

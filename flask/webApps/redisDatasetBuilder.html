@@ -7,10 +7,15 @@
 
 <script>
 
+//var additionalIcons=[]; // ここに追加のアイコンのパスを入れれば自由にプリセット追加できます　アイコンのサイズは19x27 アンカーは下中にあると想定している
+
+var iconSize ={width:19, height:27};
+
 var typeDict=["string","number","enumeration","latitude","longitude"];
 
 onload=function(){
 	setColsItem();
+	setIconColorItem();
 	listSubLayers();
 	redisSvgMapRoot = window.opener.redisSvgMapRoot;
 }
@@ -23,6 +28,84 @@ function setColsItem(){
 		cols.appendChild(opt);
 	}
 }
+
+var defaultIcons=["pngs/pin_blue.png", "pngs/pin_cyan.png", "pngs/pin_green.png", "pngs/pin_yellow.png", "pngs/pin_orange.png", "pngs/pin_pink.png", "pngs/pin_red.png", "pngs/pin_purple.png", "pngs/pin_red_cross.png", "pngs/pin_green_cross.png", "pngs/pin_blue_cross.png", "pngs/pin_pink_cross.png"]; // ここを追加した場合、customDataMapper.pyのself.fallbackIconsも同じように追加するのほうが好ましい(必須ではないですが、defaultIconが使われたときには一致している必要がある)
+
+function setIconColorItem(){
+	var idx = 0;
+	for ( var iconPath  of defaultIcons ){
+		var iconValue = idx;
+		var checked=false;
+		if ( idx==0){checked=true;}
+		var td = createIconSelCel( iconValue, iconPath, checked);
+		
+		addIconsTableItem(td);
+		++idx;
+	}
+	
+	if ( typeof additionalIcons == 'object' && additionalIcons instanceof Array){
+		for ( var iconPath  of additionalIcons ){
+			var iconValue = idx;
+			var td = createIconSelCel( iconValue, iconPath, false);
+			addIconsTableItem(td);
+			++idx;
+		}
+	}
+	
+	createCustomIconUI();
+}
+
+var iconsTableColumnLength=12;
+
+function addIconsTableItem(td, fullSpan){
+	var ictbl = document.getElementById("iconsTable");
+	var icTrs = ictbl.getElementsByTagName("tr");
+	var targetTr;
+	if (icTrs.length >0){
+		targetTr = icTrs[icTrs.length-1];
+		var tds = targetTr.getElementsByTagName("td");
+		if( tds.length >= iconsTableColumnLength || Number(targetTr.getAttribute("colspan"))>1 || fullSpan){
+			targetTr = document.createElement("tr");
+			ictbl.appendChild(targetTr);
+		}
+	} else {
+		targetTr = document.createElement("tr");
+		ictbl.appendChild(targetTr);
+	}
+	
+	if ( fullSpan ){
+		td.setAttribute("colspan",iconsTableColumnLength);
+	}
+	targetTr.appendChild(td);
+	
+}
+
+function createIconSelCel(iconValue, iconPath, checked){
+	var td =document.createElement("td");
+	var rdo=document.createElement("input");
+	rdo.setAttribute("type","radio");
+	rdo.setAttribute("value",iconValue);
+	rdo.setAttribute("id","iconImage_"+iconValue);
+	rdo.setAttribute("name","color1");
+	rdo.setAttribute("data-src",iconPath);
+	if ( checked){rdo.checked=true;}
+	
+	var lbl = document.createElement("label");
+	lbl.setAttribute("for","iconImage_"+iconValue);
+	lbl.setAttribute("id","previewIconImage_"+iconValue);
+	lbl.innerText="　";
+	lbl.style.width="27px";
+	lbl.style.display="inline-block";
+//		lbl.style.float="left";
+	lbl.style.backgroundImage=`url(${iconPath})`; 
+	lbl.style.backgroundRepeat=`no-repeat`; 
+	lbl.style.backgroundSize =`${iconSize.width}px ${iconSize.height}px`;
+	
+	td.appendChild(rdo);
+	td.appendChild(lbl);
+	return ( td);
+}
+
 
 function setType(ev){
 	console.log(ev.target);
@@ -115,12 +198,22 @@ function getSchema(){
 	if ( !hasLat || !hasLng ){
 		// NG
 		console.log("Schema error! dont have lat or lng", hasLat , hasLng);
+		showTempMessage("Schema error! dont have lat or lng", hasLat , hasLng);
 		return;
 	}
 	var datasetKey  = buildKey();
 	if ( ! datasetKey ){
 		// NG
 		console.log("Dont have DataSetName error!");
+		showTempMessage("Dont have DataSetName error!");
+		return;
+	}
+	
+	var iconNumber=checkIcon();
+	if ( ! iconNumber ){
+		// NG
+		console.log("Error: Not proper Icon");
+		showTempMessage("Error: Not proper Icon");
 		return;
 	}
 	/**
@@ -129,12 +222,21 @@ function getSchema(){
 		key: datasetKey
 	}
 	**/
-	var redisSchema = buildRedisSchema(schema,datasetKey);
+	var redisSchema = buildRedisSchema(schema,datasetKey,iconNumber);
 	console.log("OK!  : ",redisSchema);
 	console.log("JSON: ", JSON.stringify(redisSchema));
 	
-	postJson(redisSchema,"buildLayer");
+	postJson(redisSchema,"buildLayer", registSchemaPortProcess(redisSchema.namespace));
 	setTimeout(listSubLayers,3000);
+}
+
+function registSchemaPortProcess(ns){
+	return function(resonseText){
+		console.log("registSchemaPortProcess:",ns);
+		window.opener.listSubLayers(-1, ns);
+		document.getElementById("message").innerText="SUCCESS : "+resonseText;
+		setTimeout(clearMessage,3000);
+	}
 }
 
 // static for schema["Type"]
@@ -162,7 +264,7 @@ function schemaConv(sName){
 	return ( ans );
 }
 
-function buildRedisSchema(jsSchema,key){
+function buildRedisSchema(jsSchema,key,iconNumber){
 	var names = [];
 	var types = [];
 	var latCol = -1;
@@ -195,12 +297,19 @@ function buildRedisSchema(jsSchema,key){
 		titleCol: titleCol,
 		idCol: idCol,
 		namespace: "H"+key.hash+"_",
-		name: key.name
+		name: key.name,
+		created: key.time
+	}
+	if ( iconNumber && iconNumber.index ){
+		csvSchemaObj.defaultIcon= iconNumber.index;
+	}
+	if ( iconNumber && iconNumber.path ){
+		csvSchemaObj.defaultIconPath=iconNumber.path
 	}
 	return ( csvSchemaObj );
 }
 
-function postJson(jsonData,url){
+function postJson(jsonData,url, cbf){
 //	url = "buildLayer";
 	var xhr = new XMLHttpRequest();
 	xhr.open("POST", url);
@@ -212,9 +321,10 @@ function postJson(jsonData,url){
 		pepok.disabled="";
 		cbFunc(true,xhr.responseText);
 		**/
-		window.opener.listSubLayers(-1);
 		document.getElementById("message").innerText="SUCCESS : "+xhr.responseText;
-		setTimeout(clearMessage,3000);
+		if ( typeof cbf == "function" ){
+			cbf(xhr.responseText);
+		}
 	};
 	xhr.onerror = function(){
 		console.log("POST FAIL.... : ",xhr.status);
@@ -230,6 +340,11 @@ function postJson(jsonData,url){
 
 function clearMessage(){
 	document.getElementById("message").innerText="";
+}
+
+function showTempMessage(msg){
+	document.getElementById("message").innerText=msg;
+	setTimeout(clearMessage,3000);
 }
 
 function buildKey(){
@@ -393,7 +508,7 @@ function listSubLayers(){
 	}
 	var i = 0;
 	for ( key in json ){
-		if ( i > 0 ){
+		if ( i >= 0 ){
 			opt = document.createElement("option");
 			opt.value = key;
 			opt.innerText = json[key];
@@ -446,20 +561,139 @@ function deleteAllDBcancel(){
 }
 
 
+function checkIcon(){
+	var color1 = document.getElementsByName("color1");
+	var selectedIconNumber=0;
+	var seectedIconImage;
+	for (var i = 0; i < color1.length; i++){
+		if(color1[i].checked){
+			selectedIconNumber=i;
+			seectedIconImage = color1[i];
+			break;
+		}
+	}
+	var imgsrc = seectedIconImage.getAttribute("data-src");
+	if (!imgsrc){
+		return (null);
+	}
+	console.log("selectedIconNumber:",selectedIconNumber);
+	return ({index:selectedIconNumber,path:imgsrc});
+}
+
+var customIconValue = "custom";
+function createCustomIconUI(){
+	var td = createIconSelCel( customIconValue, "", false);
+	td.insertAdjacentHTML("beforeend",`<span style="font-size:11px">カスタムアイコン</span><input id="loadLocalImageButton" type="file" accept="image/*" onchange="loadLocalImage(event)" onclick="this.value=null;" style="font-size:8px; width :180px; height: 20px">`); // */
+	addIconsTableItem(td, true);
+
+}
+
+function getNaturalImageSize(dataUri){
+	return new Promise(function(okCallback, ngCallback) {
+		var orgImg = new Image();
+		orgImg.onload=function(){
+			okCallback({width:orgImg.naturalWidth,height:orgImg.naturalHeight});
+		}
+		orgImg.src=dataUri;
+	});
+}
+
+function loadLocalImage(event){
+	// https://www.html5rocks.com/ja/tutorials/file/dndfiles//
+	console.log("loadLocalImage:",event.target.files[0]);
+	localBitImageFileName = event.target.files[0].name;
+	var fileReader = new FileReader() ;
+	fileReader.onload = async function() {
+		var dataUri = this.result ;
+		var orgSize = await getNaturalImageSize(dataUri);
+		if ( orgSize.width > iconSize.width * 2  && orgSize.height > iconSize.height * 2){
+			console.log("icon is too large, build shrinked icon image :  original size : ", orgSize);
+			dataUri = await thumbnail(dataUri,iconSize.width,iconSize.height);
+		}
+		console.log("onload file");
+		var customBgimg = document.getElementById("previewIconImage_"+customIconValue);
+		customBgimg.style.backgroundImage=`url(${dataUri})`; 
+		var customCk = document.getElementById("iconImage_"+customIconValue);
+		customCk.setAttribute("data-src", dataUri);
+	}
+	var targetFile = event.target.files[0]
+	if ( targetFile.type.match('image.*') ){
+		fileReader.readAsDataURL( targetFile ) ;
+	} else {
+		console.log("NOT image file");
+	}
+}
+
+
+// https://stackoverflow.com/questions/2303690/resizing-an-image-in-an-html5-canvas
+async function thumbnail(base64, maxWidth, maxHeight) {
+	
+	// Max size for thumbnail
+	if(typeof(maxWidth) === 'undefined') var maxWidth = 500;
+	if(typeof(maxHeight) === 'undefined') var maxHeight = 500;
+
+	// Create and initialize two canvas
+	var canvas = document.createElement("canvas");
+	var ctx = canvas.getContext("2d");
+	var canvasCopy = document.createElement("canvas");
+	var copyContext = canvasCopy.getContext("2d");
+
+	// Create original image
+	var img = new Image();
+	await new Promise((resolve, reject) => {
+		img.onload = () => resolve(img);
+		img.onerror = (e) => reject(e);
+		img.src = base64;
+	})
+	
+	
+	// Determine new ratio based on max size
+	var ratio = 1;
+	if(img.width > maxWidth)
+		ratio = maxWidth / img.width;
+	else if(img.height > maxHeight)
+		ratio = maxHeight / img.height;
+
+	// Draw original image in second canvas
+	canvasCopy.width = img.width;
+	canvasCopy.height = img.height;
+	copyContext.drawImage(img, 0, 0);
+
+	// Copy and resize second canvas to first canvas
+	canvas.width = img.width * ratio;
+	canvas.height = img.height * ratio;
+	ctx.drawImage(canvasCopy, 0, 0, canvasCopy.width, canvasCopy.height, 0, 0, canvas.width, canvas.height);
+
+	return canvas.toDataURL();
+
+}
+
 </script>
 <body>
-<h1>Redis Dataset Schema Builder</h1>
+<h1>Dataset Schema Builder</h1>
+
+<table><tr><td>
 <input type="text" placeholder="Input dataset name" id="dsName"></input>
+</td><td>
 <select id="cols" name="columns" onchange="setColumn(event)">
 <option value="0">カラム数</option>
 </select>
+</td></tr></table>
+
+
+<table  id="iconsTable" border="1" style="border-collapse: collapse;border: 1px solid #a3a3a4"></table>
+
 
 <hr>
+<h4>Schema Table</h4>
 <table id="schemaTable">
 </table>
 <hr>
 <input type="button" value="makeSchema" onClick="getSchema()"/><span id="message"></span>
 
 <div style="background-color:#FF9090">Danger Zone: Remove subLayer: <select id="removeSubLayersSel"></select><input type="button" onclick="deleteAllDB0()" value="サブレイヤ削除" id="delAll" /><input style="display:none;" type="button" onclick="deleteAllDBcancel()" value="キャンセル" id="delAllcancel" /></div>
+
+
+
 </body>
 </html>

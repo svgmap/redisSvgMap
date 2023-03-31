@@ -7,6 +7,7 @@
 # 2019/05/13 ついにサブレイヤー機能が大枠で完成！
 # 2019/08/20 Rev17対応
 # 2023/01/31 threadのAPI更新に対応, --dbnumb, --port option
+# 2023/03/28 POIのhashKey生成をコアライブラリと共通化
 
 # Lesson0
 # https://www.pytry3g.com/entry/Flask-Quickstart
@@ -93,8 +94,7 @@ class redisRegistThread(threading.Thread):
     self.dbns = dsHash
     self.csv2redis = Csv2redisClass(redisDBNumber)
     self.csv2redis.init(self.dbns)
-    self.latCol = self.csv2redis.schemaObj.get("latCol")
-    self.lngCol = self.csv2redis.schemaObj.get("lngCol")
+    self.schemaObj = self.csv2redis.schemaObj
 
   def stop(self):
     self.stop_event.set()
@@ -108,8 +108,8 @@ class redisRegistThread(threading.Thread):
     #    self.csv2redis.init(self.dbns)
     if jsData["action"] == "MODIFY":
       print("MODIFY: start : dbNamespace:", self.dbns, file=sys.stderr)
-      originPois = getData(jsData["from"], self.latCol, self.lngCol)
-      changeToPois = getData(jsData["to"], self.latCol, self.lngCol)
+      originPois = getData(jsData["from"], self.schemaObj)
+      changeToPois = getData(jsData["to"], self.schemaObj)
       count = 0
       for originPoi in originPois:
         ret = self.csv2redis.deleteData((originPoi), self.csv2redis.maxLevel)
@@ -130,7 +130,7 @@ class redisRegistThread(threading.Thread):
       print("Step2 ADD: end : geoHashes:", geoHashes, file=sys.stderr)
 
     elif jsData["action"] == "ADD":
-      addPois = getData(jsData["to"], self.latCol, self.lngCol)
+      addPois = getData(jsData["to"], self.schemaObj)
       print("ADD: start : dbns: ", self.dbns, file=sys.stderr)
       # print("addPois:", addPois, "   jsData:", jsData)
       count = 0
@@ -145,7 +145,7 @@ class redisRegistThread(threading.Thread):
       print("ADD: update lrmap")
 
     elif jsData["action"] == "DELETE":
-      delPois = getData(jsData["from"], self.latCol, self.lngCol)
+      delPois = getData(jsData["from"], self.schemaObj)
       print("DELETE: start : dbns: ", self.dbns, delPois, file=sys.stderr)
       count = 0
       for delPoi in delPois:
@@ -235,38 +235,48 @@ def toNumber(coord):
 reg = re.compile(r"[^,]")
 
 
-def getData(poiDatas, latCol, lngCol):
+def getData(poiDatas, schemaObj):
   # redisに投入するPOIデータを生成する(csvではなくWebSertvice(Flask)で投入するとき用。csvファイル(バッチ)要は、csv2redisの中のgetOneData()が相当)
+  # hkeyを生成するロジックはgetOneDataと共通化
+  csvSchemaType = schemaObj.get("type")
+  latCol = schemaObj.get("latCol")
+  lngCol = schemaObj.get("lngCol")
+
   out = []
+
   for poiData in poiDatas:
-    lat = toNumber(poiData["latitude"])
-    lng = toNumber(poiData["longitude"])
     meta = poiData["metadata"]
+    splitMeta = meta.split(',', -1)
+    if (latCol > lngCol):
+      splitMeta.insert(lngCol, str(poiData["longitude"]))
+      splitMeta.insert(latCol, str(poiData["latitude"]))
+    else:
+      splitMeta.insert(latCol, str(poiData["latitude"]))
+      splitMeta.insert(lngCol, str(poiData["longitude"]))
 
     if (generalHkey == True):
-      hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000)) + ":" + meta
-      # POIのIDは苦慮中・・・ひとまずほとんど何も考えないタイプでやってみる・・・(全部のデータを（ただし緯度経度は小数点以下５桁で丸め)足し合した文字列でキーとする））
-      print("generalHkey:", hkey)
+      # Csv2redisClassのhkey生成ルールで生成する
+      oneData = Csv2redisClass.getPoiKey(splitMeta, latCol, lngCol, csvSchemaType)
+      # print("generalHkey:", oneData["hkey"])
     else:
+      # こちらは基本的に使われない
+      lat = toNumber(poiData["latitude"])
+      lng = toNumber(poiData["longitude"])
       if (reg.search(meta)):
         # POIのIDは苦慮中・・・metaにカンマ以外の文字があったらmetaをID(POI識別用HashKey)とする 2019/4/2
         hkey = meta
       else:
         # metaがカンマ以外何もないときは緯度経度の100000倍の値をHashKeyにする
         hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000))
+      oneData = {"hkey": hkey, "lat": lat, "lng": lng}
+
+    if (oneData is None):
+      print("Invalid data, skip:", poiData)
+      # getPoiKey()での簡易バリデーションチェック失敗のため、outへの追加をスキップ
+      continue
 
     # "data"の中身がredisの実データとして投入される
-    if (latCol == 0 and lngCol == 1):
-      oneData = {"lat": lat, "lng": lng, "data": str(lat) + "," + str(lng) + "," + meta, "hkey": hkey}
-    else:
-      splitMeta = meta.split(',', -1)
-      if (latCol > lngCol):
-        splitMeta.insert(lngCol, str(poiData["longitude"]))
-        splitMeta.insert(latCol, str(poiData["latitude"]))
-      else:
-        splitMeta.insert(latCol, str(poiData["latitude"]))
-        splitMeta.insert(lngCol, str(poiData["longitude"]))
-      oneData = {"lat": lat, "lng": lng, "data": ",".join(splitMeta), "hkey": hkey}
+    oneData["data"] = ",".join(splitMeta)
 
     out.append(oneData)
   return out

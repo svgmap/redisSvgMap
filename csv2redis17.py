@@ -39,6 +39,7 @@ from lib.svgmapContainer import SvgmapContainer, Tag
 #  Rev17  2019/08/23 Rev14のpull req.内容をRev16に適用しました
 #         2019/08/23 完全カスタムsvg出力ルーチンフレームワークを入れはじめた（customDataGenerator、customLowResGenerator）
 #         2019/08/26 カスタム出力フレームワークを動かした
+#         2023/03/28 POIデータのhashkey生成を関数化、flaskサービスでも共用できるようにした
 #
 # How to use redis...
 # https://redis-py.readthedocs.io/en/latest/
@@ -131,7 +132,7 @@ class Csv2redisClass():
     # そのズームレベルのタイルにおける、ラスターカバレッジ
     # ラスターの解像度はx:lowresMapSize x y:lowresMapSize
     # lrMapのKeyは、x_y = xyKey : ラスターピクセル座標のハッシュ
-    # lrMap["total"](total特殊キー)には総ポイント個数
+    # lrMap["total"](total特殊キー)にはその低解像度タイル全部に含まれる総ポイント個数(以下の[len(csvSchema)]を全部足した値)
     # 他のxyKeyのlrMapのValueは、そのデータのプロパティに対応する配列
     # [0..len(csvSchema)-1]以下のデータが入る
     #    メタデータがString(T_STR)の場合：文字数の合計：あまり意味がないが・・
@@ -860,7 +861,7 @@ class Csv2redisClass():
     # global r
     # global poi_color, poi_index, poi_size
 
-    print("saveSvgMapTileN: schemaObj:", self.schemaObj)
+    # print("saveSvgMapTileN: schemaObj:", self.schemaObj)
 
     latCol = self.schemaObj.get("latCol")
     lngCol = self.schemaObj.get("lngCol")
@@ -924,6 +925,7 @@ class Csv2redisClass():
           thisTile = pickle.loads(self.r.get(self.ns + geoHash))
           # print(geoHash, "lowRes Data:len", len(thisTile), thisTile)
           # print(geoHash, "lowRes Data:len", len(thisTile))
+          totalPoisIndex = len(csvSchemaType)
           for xyKey, data in thisTile.items():
             xy = xyKey.split("_")
             if (len(xy) == 2):
@@ -941,7 +943,7 @@ class Csv2redisClass():
                 title = xyKey
                 item = Tag('rect')
                 item.x, item.y, item.width, item.height = (100 * lng, -100 * lat - pixH, pixW, pixH)
-                item.content = 'totalPois:%s' % len(csvSchemaType)
+                item.content = 'totalPois:%s' % data[totalPoisIndex]
                 g.append_child(item)
         print(g)
 
@@ -1072,7 +1074,7 @@ class Csv2redisClass():
     if (len(self.schemaObj.get("schema")) == 0 or self.schemaObj.get("namespace") != self.ns):
       if self.r.exists(self.ns + "schema"):
         self.schemaObj = pickle.loads(self.r.get(self.ns + "schema"))
-        print("[[[INIT]]]   load schemaObj:", self.schemaObj, "  NS:", redisNs)
+        # print("[[[INIT]]]   load schemaObj:", self.schemaObj, "  NS:", redisNs)
         # schemaObj={
         #  "schema" : schemaObj.get("schema"),
         #  "type" : schemaObj.get("type"),
@@ -1081,7 +1083,7 @@ class Csv2redisClass():
         #  "titleCol": schemaObj.get("titleCol")
         # }
     else:
-      print("[[[INIT]]]    SKIP load schema : NS: ", redisNs, file=sys.stderr)
+      # print("[[[INIT]]]    SKIP load schema : NS: ", redisNs, file=sys.stderr)
       pass
 
   def getSchema(self, header):
@@ -1147,6 +1149,8 @@ class Csv2redisClass():
       # row[0]で必要な項目を取得することができる
       #     print(row)
       oneData = self.getOneData(row, latCol, lngCol)
+      if ( oneData is None):
+        continue
       self.registData(oneData, maxLevel)
       lines = lines + 1
       if (lines % 1000 == 0):
@@ -1162,6 +1166,8 @@ class Csv2redisClass():
       # row[0]で必要な項目を取得することができる
       #     print(row)
       oneData = self.getOneData(row, latCol, lngCol)
+      if ( oneData is None):
+        continue
       self.deleteData(oneData, maxLevel)
       lines = lines + 1
       if (lines % 1000 == 0):
@@ -1189,42 +1195,50 @@ class Csv2redisClass():
     except:
       return False
     return True
+  
+  @staticmethod
+  def getPoiKey(poiData,latCol,lngCol,csvSchemaType):
+    # poiDataは配列化済みのcsvデータ(文字列の配列)
+    # 簡単な整合性チェックを行っている
+    # 本来であれば、csvSchemaTypeに基づく各値の型チェックもすべき(TBD)
+    if ( len(poiData)!= len(csvSchemaType)):
+      return None
+    
+    try:
+      lat = float(poiData[latCol])
+      lng = float(poiData[lngCol])
+    except:
+      return None
+
+    if ( lat<-90 or lat >90 or lng <-180 or lng > 180):
+      return None
+
+    meta =[]
+    for i, data in enumerate(poiData):
+      if i!= latCol and i!= lngCol:
+        meta.append(data)
+
+    hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000)) + ":" + ",".join(meta)
+    ans = {"lat":lat,"lng":lng,"hkey":hkey}
+    return ans
 
   def getOneData(self, row, latCol, lngCol, idCol=-1):
-    csvSchema = self.schemaObj.get("schema")
+    csvSchemaType = self.schemaObj.get("type")
     # csv１行分の配列から、登録用のデータを構築する。ここで、データの整合性もチェックする
-    # Flaskによるウェブサービスではこの関数は使ってない(2019.5.14)
-    lat = float(row[latCol])
-    lng = float(row[lngCol])
-    meta = ""
-    dHkey = ""
+    # Flaskによるウェブサービスではこの関数は使ってない(2019.5.14)ISSUEがあったが、
+    # getPoiKey関数を共通で使うようにしたので整合性はほぼとれている(2023/3/27)
     for i, data in enumerate(row):
       if (self.validateData(data, i)):
-        meta += str(data)
-        if (i == latCol):
-          dHkey += str(math.floor(lat * 100000))
-        elif (i == lngCol):
-          dHkey += str(math.floor(lng * 100000))
-        else:
-          dHkey += str(data)
+        row[i] = str(data)
       else:
-        meta += "-"
-        dHkey += "-"
-      if i < len(csvSchema) - 1:
-        meta += ","
-        dHkey += ","
+        row[i]= "-"
 
-    # print("ParsedCsvData:",lat,lng,meta)
-    if (idCol != -1):
-      hkey = row[idCol]
-    elif (idCol == latCol or idCol == lngCol):  # idカラムに緯度化経度が明示された場合は、緯度:経度 それぞれ5桁目まででハッシュ(ID)とする
-      hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000))
-    else:
-      hkey = dHkey
+    oneData = Csv2redisClass.getPoiKey(row,latCol,lngCol,csvSchemaType)
+    if ( oneData is None):
+      return None
+    oneData["data"]=",".join(row)
 
     # print ("getOneData hkey:",hkey, file=sys.stderr)
-
-    oneData = {"lat": lat, "lng": lng, "data": meta, "hkey": hkey}  # hkeyで実データのハッシュを直に指定 2019/3/13
     # print("oneData:", oneData, " row:", row)
     return (oneData)
 
@@ -1304,7 +1318,7 @@ def main():
   parser.add_argument("--image")
   parser.add_argument("--size")
 
-  dbns = "s2_"
+  dbns = "Hs2_"
 
   inputcsv = "./worldcitiespop_jp.csv"
   args = parser.parse_args()
