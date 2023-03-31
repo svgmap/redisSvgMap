@@ -25,8 +25,12 @@ Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 * Access http://localhost:5000/svgmap/
 * nohup ./runFlask.sh >1.txt 2>&1 &
 
-## Dump (Backup) DB
+## Backup and Restore
+### Backup
+* ``mkdir dump``
 * ``python3 dbDump.py``
+### Restore
+* ``python3 dbDump.py --restore``
 
 ## License
 This software is open source software under GPL Ver. 3. Please refer to the LICENSE file.
