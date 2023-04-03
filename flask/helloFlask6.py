@@ -200,15 +200,8 @@ def getEditStat(dsHash=dbnsDefault):
 @app.route("/svgmap/listSubLayers")
 def listSubLasyers():
   csv2redis = Csv2redisClass(redisDBNumber)
-  sl = csv2redis.listSubLayers()
-  print(sl)
-  dsl = {}
-  for key in sl:
-    dsl[key.decode()] = (sl.get(key)).decode()
-
-  ans = json.dumps(dsl)
-  print(ans)
-  # return ans
+  sl = csv2redis.listSubLayers(True)
+  ans = json.dumps(sl)
   return Response(ans, mimetype="application/json")
 
 

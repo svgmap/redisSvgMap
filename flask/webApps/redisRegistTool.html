@@ -47,20 +47,20 @@ function listSubLayers(selIndex, layerKeyOptional){
 	xhr.open("GET", "listSubLayers");
 	xhr.send();
 	xhr.addEventListener("load",function(ev){
-		console.log("listSubLayers:",ev.target.responseText);
-		json = JSON.parse(ev.target.responseText);
+		//console.log("listSubLayers:",ev.target.responseText);
+		var json = JSON.parse(ev.target.responseText);
 		subLayers = json;
 		console.log("listSubLayers JSON:",json);
 		var i = 0;
 		var opt;
 		for ( key in json ){
-			console.log("key:",key, " val:",json[key]);
+			//console.log("key:",key, " val:",json[key]);
 			opt = document.createElement("option");
 			opt.value = key;
 			if ( layerKeyOptional && key == layerKeyOptional){
 				opt.selected = true;
 			}
-			opt.innerText = json[key];
+			opt.innerText = json[key].name;
 			if ( selIndex != undefined  && selIndex == i){
 				opt.selected = true;
 			}

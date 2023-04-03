@@ -1268,11 +1268,20 @@ class Csv2redisClass():
     self.schemaObj = schemaData
     return (True)
 
-  def listSubLayers(self):
+  def listSubLayers(self, withSchema=False):
     #   global r
     # r = redis.Redis(host='localhost', port=6379, db=0)
     # print(self.r.hgetall("dataSet"))
-    return (self.r.hgetall("dataSet"))
+    bsl = self.r.hgetall("dataSet")
+    sl = {}
+    for key in bsl:
+      sl[key.decode()] = (bsl.get(key)).decode()
+    
+    if withSchema:
+      for slKey in sl:
+        slSchema = pickle.loads(self.r.get(slKey + "schema"))
+        sl[slKey]=slSchema
+    return (sl)
 
   def regist_poi_size(self, _size: list):
     # global poi_size

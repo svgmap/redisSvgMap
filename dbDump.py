@@ -45,15 +45,22 @@ class Csv2redisDumperClass():
     indexJsPath = self.outputPath + "index.json"
     # 上書き禁止モードで書き込み("w"ではなくて"x")
     indexJsFile = open(indexJsPath, mode="x", encoding="utf-8")
-    json.dump(self.decode_dict(sl), indexJsFile, indent=2, ensure_ascii=False)
+    # decode_dict処理をしなくても、redisインスタンス生成時にdecode_responses=Trueを指定すればやってくれるが・・
+    json.dump(sl, indexJsFile, indent=2, ensure_ascii=False)
     indexJsFile.close()
 
+    slIdx = 0
     for key in sl:
-      print("SubLayerName:", sl[key].decode(), " SubLayerKey:", key.decode())
-      self.getSubLayer(key.decode())
+      print("SubLayerName:", sl[key], " SubLayerKey:", key)
+      self.getSubLayer(key, slIdx)
+      slIdx += 1
 
-  def getSubLayer(self, slKey):
+  def getSubLayer(self, slKey, slIdx):
     slSchema = self.getSchema(slKey)
+    print("created" in slSchema)
+    if (("created" in slSchema) == False):
+      slSchema["created"] = slIdx  # 旧いデータは生成日時が入っていない為、dictの順番をとりあえず設置しておく
+      print("Add 'created' property")
     print("SCHEMA: latCol", slSchema.get("latCol"), " lngCol:", slSchema.get("lngCol"), " schema:", slSchema.get("schema"))
     # print("SCHEMA Object:::",slSchema)
 
@@ -80,9 +87,9 @@ class Csv2redisDumperClass():
         for poidata in src:
           # print (poidata.decode())
           csvTxt = poidata.decode()
-          csvTxt = csvTxt.replace('"','')
-          csvTxt = csvTxt.replace('\r','')
-          csvTxt = csvTxt.replace('\n','')
+          csvTxt = csvTxt.replace('"', '')
+          csvTxt = csvTxt.replace('\r', '')
+          csvTxt = csvTxt.replace('\n', '')
           csvFile.write(csvTxt + "\n")
           poi = poidata.decode().split(',', -1)
         # print(hKeys)
