@@ -882,13 +882,16 @@
 
 			//	console.log("total:"+mapImgs.length+"imgs");
 			//	var removedImgs= 0;
-			if (true) {
+			if (uaProp.IE) {
 				// 下の再利用処理はIE11でかなりのボトルネック化している・・・
 				for (var i = mapImgs.length - 1; i >= 0; i--) {
 					mapImgs.item(i).parentNode.removeChild(mapImgs.item(i)); // 何の工夫もせず単に全部消す。これが一番早い感じで表示もまずまず・・・
 				}
-				// 下の再利用処理はIE11だけでなく、Chromeでもかなりのボトルネック化している・・・ 2023/3/23
 			} else {
+				// リフロー多発を抑制 2023/4/3
+				// https://ui.appleple.blog/entry-109.html
+				var xds=[];
+				var yds=[];
 				for (var i = mapImgs.length - 1; i >= 0; i--) {
 					var il = Number(mapImgs.item(i).style.left.replace("px", ""));
 					var it = Number(mapImgs.item(i).style.top.replace("px", ""));
@@ -907,26 +910,14 @@
 							sftY,
 						ih * zoomFactor
 					);
-
-					var imgRect = new Object();
-					imgRect.x = xd.p0;
-					imgRect.y = yd.p0;
-					imgRect.width = xd.span;
-					imgRect.height = yd.span;
-
-					/** This removeChildLogic causes safari(both iOS&MacOS) Crash.. 2016.5.16
-			if (isIntersect(imgRect,mapCanvasSize)){ // キャンバス内にあるimgのみ書き換える
+					xds[i]=(xd);
+					yds[i]=(yd);
+				}
 				
-				mapImgs.item(i).style.left = xd.p0 + "px";
-				mapImgs.item(i).style.top = yd.p0 + "px";
 				
-				mapImgs.item(i).width = xd.span;
-				mapImgs.item(i).height = yd.span;
-			} else { // それ以外のimgは消す
-				mapImgs.item(i).parentNode.removeChild(mapImgs.item(i));
-	//			++ removedImgs;
-			}
-			**/
+				for (var i = mapImgs.length - 1; i >= 0; i--) {
+					var xd = xds[i];
+					var yd = yds[i];
 					// Simply rewrite image position
 					mapImgs.item(i).style.left = xd.p0 + "px";
 					mapImgs.item(i).style.top = yd.p0 + "px";
