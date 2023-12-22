@@ -1,0 +1,6 @@
+Flask==3.0.0
+hiredis==2.3.2
+numpy==1.26.2
+Pillow==10.1.0
+redis==5.0.1
+Flask-Cors==4.0.0
