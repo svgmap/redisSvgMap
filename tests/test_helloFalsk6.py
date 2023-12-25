@@ -3,11 +3,10 @@ import os
 import io
 import json
 import sys
-
-print(sys.path)
+from unittest import mock
 from helloFlask6 import app
 
-class TestOfMain(unittest.TestCase):
+class TestOfFlaskApps(unittest.TestCase):
   def setUp(self):
     self.main = app.test_client();
 
