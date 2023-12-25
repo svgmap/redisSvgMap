@@ -112,6 +112,7 @@ class Csv2redisClass():
     self.customDataGenerator = None
     # customLowResGeneratorも同様　(TBD)
     self.customLowResGenerator = None
+    self.csv_file = None
 
   # static for schema["Type"]
   T_ENUM = 0
@@ -123,6 +124,9 @@ class Csv2redisClass():
   topVisibleMinZoom = 4.5
 
   UseRedisHash = True  # これはもはやTrue固定です　あとでFalseケースの実装を外します 2019/3/13
+
+  def set_connect(self, connector): # unittest用のコネクタ差し替え関数
+    self.r = connector
 
   def registLrMap(self, lrMap, xyKey, splitedData):
     # 低解像度統計データを構築・登録する
@@ -1135,11 +1139,14 @@ class Csv2redisClass():
     return csvSchemaObj
 
   def getCsvReader(self, inputcsv):
-    csv_file = open(inputcsv, "r", encoding="utf-8", errors="", newline="")
+    self.csv_file = open(inputcsv, "r", encoding="utf-8", errors="", newline="")
     # リスト形式
     file = csv.reader(
-        csv_file, delimiter=",", doublequote=True, lineterminator="\r\n", quotechar='"', skipinitialspace=True)
+        self.csv_file, delimiter=",", doublequote=True, lineterminator="\r\n", quotechar='"', skipinitialspace=True)
     return file
+
+  def closeCsvReader(self):
+    self.csv_file.close()
 
   def readAndRegistData(self, file, latCol, lngCol, maxLevel):
     # 二行目以降がデータになる～実データを読み込む（ToDo: サブルーチン化）
