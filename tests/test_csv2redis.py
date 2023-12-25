@@ -14,7 +14,7 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.c2r = Csv2redisClass()
     self.c2r.set_connect(self.f_redis)
     self.c2r.init("test_")
-    self.c2r.targetDir = "tests/temporary"
+    self.c2r.targetDir = "tests/temporary/"
     # スキーマを準備 リーダーの作成はCsv２RedisClassに不要な関数（どっかのタイミングで削除したい）
     self.file = self.c2r.getCsvReader("./worldcitiespop_jp.csv")
     header = next(self.file)
@@ -39,9 +39,7 @@ class TestOfCsv2Redis(unittest.TestCase):
     # CSVファイルを読み込みデータをredisに登録する
     latCol = self.c2r.schemaObj.get("latCol")
     lngCol = self.c2r.schemaObj.get("lngCol")
-    self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)  # 8:maxlevel
-    print('>>>>>>>')
-    print(self.f_redis.keys())
+    self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)
     result = self.f_redis.hgetall('test_DBADBADADBA')
     #print(self.f_redis.hgetall('test_DBADBADADBA'))
     # TODO 登録後のデータ正常性がまだ未確認
@@ -51,10 +49,20 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.assertEqual(result[b"jp,aragachi,Aragachi,47,-,2611777,12769111,26.117778,okinawa,"].decode("UTF-8"), "jp,aragachi,Aragachi,47,-,26.117778,127.691111,26.117778,okinawa,")
   
   def test_buildMapData(self):
+    # TODO テスト内容はこれから
+    latCol = self.c2r.schemaObj.get("latCol")
+    lngCol = self.c2r.schemaObj.get("lngCol")
+    self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)
+    print('>>>>>>>')
     self.c2r.buildAllLowResMap()
 
   def test_saveAllSvgMap(self):
-    self.c2r.saveAllSvgMap(True)
+    # TODO テスト内容はこれから
+    latCol = self.c2r.schemaObj.get("latCol")
+    lngCol = self.c2r.schemaObj.get("lngCol")
+    self.c2r.readAndRegistData(self.file, latCol, lngCol, 16) # 登録
+    self.c2r.buildAllLowResMap() # POIが上限あふれたラスターデータの出力
+    self.c2r.saveAllSvgMap(True) # ベクトルデータ出力
 
   def test_getGeoHashCode(self):
     self.assertEqual(self.c2r.getGeoHashCode(130, 39, 130.01, 42, 0.1, 0.1), ('A', 130.01, 42, 0.05, 0.05))
