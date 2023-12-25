@@ -42,10 +42,13 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)  # 8:maxlevel
     print('>>>>>>>')
     print(self.f_redis.keys())
-    print(type(self.f_redis.get('test_DBADBADADBA')))
+    result = self.f_redis.hgetall('test_DBADBADADBA')
+    #print(self.f_redis.hgetall('test_DBADBADADBA'))
     # TODO 登録後のデータ正常性がまだ未確認
-    #print('test_DBB : '+self.f_redis.get('test_DBADBADADBA').decode('utf-8'))
-    #self.assertEqual(self.f_redis.get("test_DBBCCDC").decode('utf-8'),"string")
+    #print(result[b'jp,aragachi,Aragachi,47,-,2611777,12769111,26.117778,okinawa,'])
+    self.assertEqual(len(self.f_redis.keys("test_*")), 137)
+    # ハッシュキーを作成する際getOneData関数で緯度経度を丸めてます
+    self.assertEqual(result[b"jp,aragachi,Aragachi,47,-,2611777,12769111,26.117778,okinawa,"].decode("UTF-8"), "jp,aragachi,Aragachi,47,-,26.117778,127.691111,26.117778,okinawa,")
   
   def test_buildMapData(self):
     self.c2r.buildAllLowResMap()
@@ -76,7 +79,12 @@ class TestOfCsv2Redis(unittest.TestCase):
     #self.assertEqual(self.f_redis.get("test_D"),"string")
     
   def test_getOneData(self):
+    # デフォルト：データをすべて使用してハッシュキー（ユニークキー）を生成するパターン
     data = ['jp','a','A','47','','26.606111','127.923889','26.606111','okinawa']
     result = self.c2r.getOneData(data, 5, 6)  # 5:lat, 6:lng
     correct = {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa,'}
+    self.assertEqual(result, correct)
+    # HashKeyを指定するパターン
+    result = self.c2r.getOneData(data, 5, 6, 8)  # 5:lat, 6:lng
+    correct = {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'okinawa'}
     self.assertEqual(result, correct)
