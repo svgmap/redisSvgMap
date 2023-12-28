@@ -22,3 +22,8 @@ class TestOfFlaskApps(unittest.TestCase):
   def test_access2rtDatasetPath(self):
     response = self.main.get("/dataset/show")
     self.assertEqual(response.status_code, 200)
+
+  def test_access2IndexFile(self):
+    response = self.main.get("/svgmap/index.html")
+    self.assertEqual(response.status_code, 200)
+    response.close()

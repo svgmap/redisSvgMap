@@ -32,12 +32,9 @@ import json
 import re
 import math
 from collections import OrderedDict
-# import pprint
 import threading
 import argparse
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from csv2redis17 import Csv2redisClass  # 上で上のディレクトリをappendしてるのでimportできる
+from scripts.csv2redis import Csv2redisClass  # 上で上のディレクトリをappendしてるのでimportできる
 
 app = Flask(__name__)
 CORS(app)
@@ -48,7 +45,7 @@ redisDBNumber = 0
 
 generalHkey = True  # 個々のデータを投入するhmapのkey(これはgeoHashではなく、その下の個々のデータを入れる入れ物のハッシュキー(なのでどうでもいいといえばどうでもいい))をどうするか
 
-SAVE_DIR = "webApps"
+SAVE_DIR = "flask/webApps"
 
 # LowResImage = False  # 小縮尺タイルをrectVectorではなくPNGビットイメージにする場合はTrueに
 LowResImage = False
