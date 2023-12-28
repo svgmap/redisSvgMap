@@ -30,8 +30,8 @@ class TestOfCsv2Redis(unittest.TestCase):
 
   def test_displaySchemaObj(self):
     # Schemaが登録されているかの確認
-    correctOfSchema = ['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e', 'RegistTime:n']
-    correctOfType=[0, 2, 2, 0, 1, 1, 1, 1, 0, 1]
+    correctOfSchema = ['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e']
+    correctOfType=[0, 2, 2, 0, 1, 1, 1, 1, 0]
     self.assertEqual(self.c2r.schemaObj.get("schema"), correctOfSchema)
     self.assertEqual(self.c2r.schemaObj.get("type"), correctOfType)
 
@@ -46,7 +46,8 @@ class TestOfCsv2Redis(unittest.TestCase):
     #print(result[b'jp,aragachi,Aragachi,47,-,2611777,12769111,26.117778,okinawa,'])
     self.assertEqual(len(self.f_redis.keys("test_*")), 137)
     # ハッシュキーを作成する際getOneData関数で緯度経度を丸めてます
-    self.assertEqual(result[b"jp,aragachi,Aragachi,47,-,2611777,12769111,26.117778,okinawa,"].decode("UTF-8"), "jp,aragachi,Aragachi,47,-,26.117778,127.691111,26.117778,okinawa,")
+    print(result)
+    self.assertEqual(result[b"2611777:12769111:jp,aragachi,Aragachi,47,-,26.117778,okinawa"].decode("UTF-8"), "jp,aragachi,Aragachi,47,-,26.117778,127.691111,26.117778,okinawa")
   
   def test_buildMapData(self):
     # TODO テスト内容はこれから
@@ -70,7 +71,7 @@ class TestOfCsv2Redis(unittest.TestCase):
   def test_registData(self):
     # self.c2r.burstSize = 3
     correct =  {"success": -1, "keys": []}
-    data_case = [{'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa,'}]
+    data_case = [{'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,,26.606111,127.923889,26.606111,okinawa', 'hkey': 'jp,a,A,47,,2660611,12792388,26.606111,okinawa'}]
     result = self.c2r.registData(data_case, 3)
     self.assertEqual(result, correct)
     
@@ -90,9 +91,18 @@ class TestOfCsv2Redis(unittest.TestCase):
     # デフォルト：データをすべて使用してハッシュキー（ユニークキー）を生成するパターン
     data = ['jp','a','A','47','','26.606111','127.923889','26.606111','okinawa']
     result = self.c2r.getOneData(data, 5, 6)  # 5:lat, 6:lng
-    correct = {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa,'}
-    self.assertEqual(result, correct)
+    print(result)
+    correct = {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa', 'hkey': '2660611:12792388:jp,a,A,47,-,26.606111,okinawa'}
+    self.assertDictEqual(result, correct)
     # HashKeyを指定するパターン
     result = self.c2r.getOneData(data, 5, 6, 8)  # 5:lat, 6:lng
-    correct = {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'okinawa'}
+    self.assertDictEqual(result, correct)
+
+  def test_getPoiKey(self):
+     # デフォルト：データをすべて使用してハッシュキー（ユニークキー）を生成するパターン
+    data = ['jp','a','A','47','','26.606111','127.923889','26.606111','okinawa']
+    schema = [0, 2, 2, 0, 1, 1, 1, 1, 0]
+    result = self.c2r.getPoiKey(data, 5, 6, schema)  # 5:lat, 6:lng
+    correct = {'lat': 26.606111, 'lng': 127.923889, 'hkey': '2660611:12792388:jp,a,A,47,,26.606111,okinawa'}
+
     self.assertEqual(result, correct)

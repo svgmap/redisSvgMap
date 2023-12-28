@@ -6,11 +6,11 @@ from xml.dom import minidom
 import argparse
 import redis
 import pickle
-# import csv2svgmap
 from PIL import Image
 import math
 import numpy as np
 import os
+from scripts.lib.svgmapContainer import SvgmapContainer, Tag
 import hashlib
 
 # csvを読み込み、redis上に、quadtreeのタイル番号をハッシュキーとした非等分quadtreeデータ構造を構築する
@@ -36,6 +36,10 @@ import hashlib
 #  Rev14  2019/05/xx Issue #2,#3対応(Schemaおよび登録データの整理)
 #  Rev15  ちょっと飛ばしてます(svg出力ルーチンカスタマイザブル) Rev17で再度
 #  Rev16  2019/08/02 クラス化しました
+#  Rev17  2019/08/23 Rev14のpull req.内容をRev16に適用しました
+#         2019/08/23 完全カスタムsvg出力ルーチンフレームワークを入れはじめた（customDataGenerator、customLowResGenerator）
+#         2019/08/26 カスタム出力フレームワークを動かした
+#         2023/03/28 POIデータのhashkey生成を関数化、flaskサービスでも共用できるようにした
 #
 # How to use redis...
 # https://redis-py.readthedocs.io/en/latest/
@@ -48,15 +52,17 @@ import hashlib
 #  小縮尺データをビットイメージで出力する機能
 #  オンデマンドでコンテンツを生成するwebサーバ機能
 #
-# ISSUES 動的出力で小縮尺ビットイメージモードの場合は、もっと効率化できる（ビットイメージ生成はSVGファイル要求時は不要なので）
+# ISSUES
+#  DONE: 動的出力で小縮尺ビットイメージモードの場合は、もっと効率化できる（ビットイメージ生成はSVGファイル要求時は不要なので）
+#  registDataのバリデーションチェックがされてない（カラム数が違っててもどんどん登録してしまう・・・）
 
 
 class Csv2redisClass():
 
-  def __init__(self):
+  def __init__(self, dbNumb=0):
     #global 変数たち
     #self.r
-    self.r = redis.Redis(host='localhost', port=6379, db=0)
+    self.r = redis.Redis(host='localhost', port=6379, db=dbNumb)
     self.listLimit = 500
     self.lowresMapSize = 128  # 集約データの分解能の定義(この数値のスクエア)　この実装では2の倍数である必要がある(上の階層の倍という意味で)
     #self.lowResIsBitImage = True
@@ -91,6 +97,21 @@ class Csv2redisClass():
     self.burstSize = 600
     self.buildAllLowResMapCount = 0
     self.deleteDataList = []
+
+    # 色(アイコン種)分けに関するオプション用：デフォルトはいつも同じビットイメージアイコンを使う感じ 2019.8.23 s.takagi
+    self.poi_color = [{"flag": "f1", "color": "mappin.png"}]
+    self.poi_index = None  # アイコン種を変化させるためのメタデータの番号(lat,lng除く)
+    self.poi_size = ["-8", "-25", "19", "27"]  # x,y,width,height
+
+    # 完全にカスタムなコンテンツ生成ルーチンを組み込むI/F
+    # customDataGeneratorオブジェクトは、outputSvgContent([poiObj],svgc:SvgmapContainer):str(xmlStr)
+    #   poiObj(Dict) = {"lat", "lng", "title", "metadata"}
+    # regist_defs(svgc:SvgmapContainer)
+    # を実装している必要がある
+    #    svgcにはヘッダやCRSが設定されています
+    self.customDataGenerator = None
+    # customLowResGeneratorも同様　(TBD)
+    self.customLowResGenerator = None
     self.csv_file = None
 
   # static for schema["Type"]
@@ -115,7 +136,7 @@ class Csv2redisClass():
     # そのズームレベルのタイルにおける、ラスターカバレッジ
     # ラスターの解像度はx:lowresMapSize x y:lowresMapSize
     # lrMapのKeyは、x_y = xyKey : ラスターピクセル座標のハッシュ
-    # lrMap["total"](total特殊キー)には総ポイント個数
+    # lrMap["total"](total特殊キー)にはその低解像度タイル全部に含まれる総ポイント個数(以下の[len(csvSchema)]を全部足した値)
     # 他のxyKeyのlrMapのValueは、そのデータのプロパティに対応する配列
     # [0..len(csvSchema)-1]以下のデータが入る
     #    メタデータがString(T_STR)の場合：文字数の合計：あまり意味がないが・・
@@ -701,7 +722,7 @@ class Csv2redisClass():
       if ans in self.overFlowKeys:
         # 下のオーバーフローキーの確認がかなり重たい rev2と比べてrev3が８倍ぐらい重いのを改善
         o = True
-      else:  ############################ この辺　今作業中です！！！
+      else:  # この辺　今作業中です！！！
         rType = self.r.type(self.ns + ans)
         if rType == b"string":
           # overflowed lowResMap
@@ -814,118 +835,13 @@ class Csv2redisClass():
       if (j % 20 == 0):
         print(100 * (j / len(bkeys)), "%", file=sys.stderr)
 
-  def saveSvgMapTile(self, geoHash, dtype=None):  # pythonのXML遅くて足かせになったので、この関数は使わなくしました 2019/1/16
-    # global r
-    latCol = self.schemaObj.get("latCol")
-    lngCol = self.schemaObj.get("lngCol")
-    if dtype is None:
-      dtype = self.r.type(self.ns + geoHash)
-    thisZoom = len(geoHash)
-    doc, svg = csv2svgmap.create_svgMapDoc()
-    csvSchema = self.schemaObj.get("schema")
-    csvSchemaType = self.schemaObj.get("type")
-    svg.setAttribute("property", self.getCsvStrExclLatLng(csvSchema, latCol, lngCol))
-    lat0, lng0, lats, lngs = self.geoHashToLatLng(geoHash)
-
-    if dtype == b"string":  # そのタイルはオーバーフローしている実データがないlowRes pickleタイル
-      thisTile = pickle.loads(self.r.get(self.ns + geoHash))
-      thisG = doc.createElement("g")  # 下のlowResPOI(rect)を入れる
-      childG = doc.createElement("g")  # childSVGのanimation要素を入れる
-      pixW = 100 * lngs / self.lowresMapSize
-      pixH = 100 * lats / self.lowresMapSize
-      for xyKey, data in thisTile.items():
-        xy = xyKey.split("_")
-        if (len(xy) == 2):
-          x = int(xy[0])
-          y = int(xy[1])
-          lng = lng0 + lngs * (x / self.lowresMapSize)
-          lat = lat0 + lats * (y / self.lowresMapSize)
-          title = xyKey
-          rect = doc.createElement("rect")
-          rect.setAttribute("x", "{:.3f}".format(100 * lng))
-          rect.setAttribute("y", "{:.3f}".format(-100 * lat - pixH))  # 緯度・pixHの足し方ちょっと怪しい・・・
-          rect.setAttribute("width", "{:.3f}".format(pixW))
-          rect.setAttribute("height", "{:.3f}".format(pixH))
-          rect.setAttribute("content", "totalPois:" + str(data[len(csvSchemaType)]))
-          thisG.appendChild(rect)
-          """
-          use = doc.createElement("use")
-          use.setAttribute("xlink:href", "#p0")
-          use.setAttribute("transform", 'ref(svg,{:.3f},{:.3f})'.format(100*lng, -100*lat))
-          use.setAttribute("xlink:title", title)
-          use.setAttribute("x", "0")
-          use.setAttribute("y", "0")
-          meta ="TBD"
-          use.setAttribute("content",meta)
-          thisG.appendChild(use)
-          """
-      thisG.setAttribute("fill", "blue")
-      thisG.setAttribute("visibleMaxZoom", str(Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1)))
-      svg.appendChild(thisG)
-
-      pipe = self.r.pipeline()  # パイプ使って少し高速化？
-      pipe.exists(self.ns + geoHash + "A")
-      pipe.exists(self.ns + geoHash + "B")
-      pipe.exists(self.ns + geoHash + "C")
-      pipe.exists(self.ns + geoHash + "D")
-      ceFlg = pipe.execute()
-
-      for i, exs in enumerate(ceFlg):  # link to child tiles
-        cN = chr(65 + i)
-        childGeoHash = geoHash + cN
-        #      print("EXISTS?", cN,exs)
-        if (exs):
-          anim = doc.createElement("animation")
-          anim.setAttribute("xlink:href", Csv2redisClass.svgFileNameHd + childGeoHash + ".svg")
-          lat_shift = 0
-          lng_shift = 0
-          if cN == "B":
-            lng_shift = lngs / 2
-          elif cN == "C":
-            lat_shift = lats / 2
-          elif cN == "D":
-            lng_shift = lngs / 2
-            lat_shift = lats / 2
-
-          anim.setAttribute("x", "{:.3f}".format(100 * (lng0 + lng_shift)))
-          anim.setAttribute("y", "{:.3f}".format(-100 * (lat0 + lat_shift + lats / 2)))  # 緯度・lats/2の足し方ちょっと怪しい・・・
-          anim.setAttribute("width", "{:.3f}".format(100 * lngs / 2))
-          anim.setAttribute("height", "{:.3f}".format(100 * lats / 2))
-          childG.appendChild(anim)
-      childG.setAttribute("visibleMinZoom", str(Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1)))
-      svg.appendChild(childG)
-
-    else:  # 実データ
-      if dtype == b"list":
-        src = self.r.lrange(self.ns + geoHash, 0, -1)  # 全POI取得
-      else:
-        src = self.r.hgetall(self.ns + geoHash)
-        src = list(src.values())
-      print(geoHash, "readData:len", len(src), file=sys.stderr)
-      for poidata in src:
-        poi = poidata.decode().split(',', -1)
-        lat = float(poi[latCol])
-        lng = float(poi[lngCol])
-
-        title = poi[0]
-        use = doc.createElement("use")
-        use.setAttribute("xlink:href", "#p0")
-        use.setAttribute("transform", 'ref(svg,{:.3f},{:.3f})'.format(100 * lng, -100 * lat))
-        use.setAttribute("xlink:title", title)
-        use.setAttribute("x", "0")
-        use.setAttribute("y", "0")
-        use.setAttribute("content", self.getCsvStrExclLatLng(poi, latCol, lngCol))
-        svg.appendChild(use)
-
-    csv2svgmap.save_xmldoc(doc, Csv2redisClass.svgFileNameHd + geoHash + ".svg")
-
   def getSchemaTypeStrArray(self, csvSchemaType):
     ans = []
     for sn in csvSchemaType:
       ans.append(Csv2redisClass.scehmaTypeStr[sn])
     return (ans)
 
-  def getCsvStrExclLatLng(self, strList, latCol, lngCol):  # 配列から緯度経度カラムを除いたカンマ区切り文字列を作ります
+  def getMetaExclLatLng(self, strList, latCol, lngCol):  # 配列から緯度経度カラムを除いたカンマ区切り文字列を作ります
     ans = []
     for i, val in enumerate(strList):
       if (i == latCol or i == lngCol):
@@ -933,21 +849,23 @@ class Csv2redisClass():
       else:
         ans.append(val)
 
-    return (",".join(ans))
+    return (ans)
 
   def saveSvgMapTileN(
-      self,
-      geoHash=None,  # タイルハッシュコード
-      dtype=None,  # あらかじめわかっている場合のデータタイプ(低解像タイルか実データタイル化がわかる)
-      lowResImage=False,  # 低解像タイルをビットイメージにする場合
-      onMemoryOutput=False,  # ライブラリとして使用し、データをオンメモリで渡す場合
-      returnBitImage=False):  # オンメモリ渡し(上がTrue限定)のとき、低解像ビットイメージデータを要求する場合
+          self,
+          geoHash=None,  # タイルハッシュコード
+          dtype=None,  # あらかじめわかっている場合のデータタイプ(低解像タイルか実データタイル化がわかる)
+          lowResImage=False,  # 低解像タイルをビットイメージにする場合
+          onMemoryOutput=False,  # ライブラリとして使用し、データをオンメモリで渡す場合
+          returnBitImage=False,  # オンメモリ渡し(上がTrue限定)のとき、低解像ビットイメージデータを要求する場合
+          globalMetadataText=None):  # SVG要素の次の行に入れる文字列(当然XMLに準拠した要素文字列もOK)
     # saveSvgMapTileを置き換え、SVGMapコンテンツをSAX的に直生成することで高速化を図る　確かに全然早くなった。pythonってやっぱりゆる系？・・・ 2019/1/16
-    outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
+    # outStrL = []  # 出力するファイルの文字列のリスト　最後にjoinの上writeする
 
     # global r
+    # global poi_color, poi_index, poi_size
 
-    print("saveSvgMapTileN: schemaObj:", self.schemaObj)
+    # print("saveSvgMapTileN: schemaObj:", self.schemaObj)
 
     latCol = self.schemaObj.get("latCol")
     lngCol = self.schemaObj.get("lngCol")
@@ -955,6 +873,20 @@ class Csv2redisClass():
     csvSchemaType = self.schemaObj.get("type")
     titleCol = self.schemaObj.get("titleCol")
     #    print(dtype)
+    # print(csvSchema)
+    #print([str] * len(csvSchema))
+    svgc = SvgmapContainer(
+        self.getMetaExclLatLng(csvSchema, latCol, lngCol),
+        self.getMetaExclLatLng(self.getSchemaTypeStrArray(csvSchemaType), latCol, lngCol))
+    if (globalMetadataText is not None):
+      svgc.appendHeader(globalMetadataText + "\n")
+
+    if (hasattr(self.customDataGenerator, "regist_defs")):
+      self.customDataGenerator.regist_defs(svgc, self.schemaObj)
+    else:
+      svgc.regist_size(self.poi_size)
+      svgc.regist_defs(self.poi_color)
+      svgc.color_column_index = self.poi_index
 
     if geoHash is None or geoHash == "":  # レベル0のタイルをgeoHash=Noneで作るようにした2019/2/26
       dtype = b"string"
@@ -966,26 +898,22 @@ class Csv2redisClass():
     else:
       lat0, lng0, lats, lngs = self.geoHashToLatLng(geoHash)
       thisZoom = len(geoHash)
+      svgc.setViewBox(lng0, lat0, lngs, lats)
 
     if dtype is None:
       dtype = self.r.type(self.ns + geoHash)
-    
-    outStrL.append("<?xml version='1.0' encoding='UTF-8'?>\n<svg property='")
-    outStrL.append(self.getCsvStrExclLatLng(csvSchema, latCol, lngCol))
-    outStrL.append("' data-property-type='")
-    outStrL.append(self.getCsvStrExclLatLng(self.getSchemaTypeStrArray(csvSchemaType), latCol, lngCol))
-    outStrL.append(
-        "' viewBox='9000,-5500,10000,10000' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>\n"
-    )
-    outStrL.append("<globalCoordinateSystem srsName='http://purl.org/crs/84' transform='matrix(100,0,0,-100,0,0)'/>\n")
-    print("@@@@@@@@@@@@@@@@@@@@")
-    print(dtype)
+
+    outPoiL = []
+
     if dtype == b"string":  # そのタイルはオーバーフローしている実データがないlowRes pickleタイル
       if lats < 360:  # レベル0のタイル(レイヤールートコンテナ)じゃない場合はそのレベルの低解像度タイルを入れる
         pixW = 100 * lngs / self.lowresMapSize
         pixH = 100 * lats / self.lowresMapSize
-        outStrL.append("<g fill='blue' visibleMaxZoom='{:.3f}'>\n".format(
-            (Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1))))
+        g = Tag('g')
+        g.fill, g.visibleMaxZoom = (
+            'blue',
+            Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1),
+        )
 
         # bitImage出力 http://d.hatena.ne.jp/white_wheels/20100322/p1
         if lowResImage:
@@ -998,11 +926,10 @@ class Csv2redisClass():
         if lowResImage and (onMemoryOutput and not returnBitImage):
           pass  # オンメモリ生成でビットイメージ要求がない場合、しかもlowResImageの場合は低分解能コンテンツ生成の必要はない(コンテナ作るだけ)
         else:
-          print("pickle loads : orig")
-          print(self.r.get(self.ns + geoHash))
           thisTile = pickle.loads(self.r.get(self.ns + geoHash))
           # print(geoHash, "lowRes Data:len", len(thisTile), thisTile)
           # print(geoHash, "lowRes Data:len", len(thisTile))
+          totalPoisIndex = len(csvSchemaType)
           for xyKey, data in thisTile.items():
             xy = xyKey.split("_")
             if (len(xy) == 2):
@@ -1018,17 +945,11 @@ class Csv2redisClass():
                 lng = lng0 + lngs * (x / self.lowresMapSize)
                 lat = lat0 + lats * (y / self.lowresMapSize)
                 title = xyKey
-                outStrL.append(' <rect x="')
-                outStrL.append('{:.3f}'.format(100 * lng))
-                outStrL.append('" y="')
-                outStrL.append('{:.3f}'.format(-100 * lat - pixH))
-                outStrL.append('" width="')
-                outStrL.append('{:.3f}'.format(pixW))
-                outStrL.append('" height="')
-                outStrL.append('{:.3f}'.format(pixH))
-                outStrL.append('" content="totalPois:')
-                outStrL.append(str(data[len(csvSchemaType)]))
-                outStrL.append('" />\n')
+                item = Tag('rect')
+                item.x, item.y, item.width, item.height = (100 * lng, -100 * lat - pixH, pixW, pixH)
+                item.content = 'totalPois:%s' % data[totalPoisIndex]
+                g.append_child(item)
+        print(g)
 
         if (lowResImage):  # 作ったpngを参照するimageタグを作る
           if onMemoryOutput and not returnBitImage:
@@ -1038,18 +959,18 @@ class Csv2redisClass():
             if (returnBitImage):  # オンメモリでのビットイメージ出力要求
               img_io = BytesIO()
               img.save(img_io, "PNG")
-              #img = img.convert('RGB') # jpegの場合はARGB受け付けてくれない
+              # img = img.convert('RGB') # jpegの場合はARGB受け付けてくれない
               #img.save(img_io, 'JPEG', quality=70)
               img_io.seek(0)
               return (img_io)  # ちょっと強引だがここで出力して終了
             if not onMemoryOutput:
               img.save(self.targetDir + Csv2redisClass.svgFileNameHd + geoHash + ".png")
-          outStrL.append(" <image style='image-rendering:pixelated' xlink:href='")
-          outStrL.append(Csv2redisClass.svgFileNameHd + geoHash + ".png")
-          outStrL.append("' x='{:.3f}".format(100 * (lng0)))
-          outStrL.append("' y='{:.3f}".format(-100 * (lat0 + lats)))
-          outStrL.append("' width='{:.3f}".format(100 * lngs))
-          outStrL.append("' height='{:.3f}'/>\n".format(100 * lats))
+          image = Tag("image")
+          image.style = 'image-rendering:pixelated'
+          image.__setattr__("xlink:href", Csv2redisClass.svgFileNameHd + geoHash + ".png")
+          image.x, image.y, image.width, image.height = (100 * (lng0), -100 * (lat0 + lats), 100 * lngs, 100 * lats)
+          g.append_child(image)
+        svgc.add_tag(g)
 
       pipe = self.r.pipeline()  # パイプ使って少し高速化できたか？
       pipe.exists(self.ns + geoHash + "A")
@@ -1058,22 +979,27 @@ class Csv2redisClass():
       pipe.exists(self.ns + geoHash + "D")
       ceFlg = pipe.execute()
 
+      g = Tag('g')
+
       if lats < 360:
-        outStrL.append("</g>\n<g fill='blue' visibleMinZoom='{:.3f}'>\n".format(
-            (Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1))))
-      else:  # レベル0のレイヤルートコンテナの場合
-        outStrL.append(
-            "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
-        )
-        outStrL.append("<g>\n")
+        g.fill = 'blue'
+        g.visibleMinZoom = Csv2redisClass.topVisibleMinZoom * pow(2, thisZoom - 1)
+      else:  # レベル0のレイヤルートコンテナの場合 (このルーチン　まずくない？)
+        # outStrL.append(
+        # このdefsはオーサリングシステムのアイコンがレイヤールートのdefsを参照していることによるので、何もアイコンはないけどしっかりdefsしておく必要がある！
+        # y.sakiuraさんのシステムでは、無条件で共通のdefsを全部のタイルに置くようになっているので大丈夫になってるからパスする
+        #    "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
+        # )
+        # outStrL.append("<g>\n")
+        pass
 
       for i, exs in enumerate(ceFlg):  # link to child tiles
         cN = chr(65 + i)
         childGeoHash = geoHash + cN
         #      print("EXISTS?", cN,exs)
         if (exs):
-          outStrL.append(" <animation xlink:href='")
-          outStrL.append(Csv2redisClass.svgFileNameHd + childGeoHash + ".svg")
+          ani = Tag("animation")
+          ani.__setattr__("xlink:href", Csv2redisClass.svgFileNameHd + childGeoHash + ".svg")
           lat_shift = 0
           lng_shift = 0
           if cN == "B":
@@ -1083,19 +1009,14 @@ class Csv2redisClass():
           elif cN == "D":
             lng_shift = lngs / 2
             lat_shift = lats / 2
-
-          outStrL.append("' x='{:.3f}".format(100 * (lng0 + lng_shift)))
-          outStrL.append("' y='{:.3f}".format(-100 * (lat0 + lat_shift + lats / 2)))
           # 緯度・lats/2の足し方ちょっと怪しい・・・
-          outStrL.append("' width='{:.3f}".format(100 * lngs / 2))
-          outStrL.append("' height='{:.3f}'/>\n".format(100 * lats / 2))
-      outStrL.append("</g>\n")
+          ani.x, ani.y, ani.width, ani.height = (100 * (lng0 + lng_shift), -100 * (lat0 + lat_shift + lats / 2),
+                                                 100 * lngs / 2, 100 * lats / 2)
+          g.append_child(ani)
+      svgc.add_tag(g)
 
     else:  # 実データ
-      outStrL.append(
-          "<defs>\n <g id='p0'>\n  <image height='27' preserveAspectRatio='none' width='19' x='-8' xlink:href='mappin.png' y='-25'/>\n </g>\n</defs>\n"
-      )
-
+      # raw data
       if dtype == b"list":
         src = self.r.lrange(self.ns + geoHash, 0, -1)  # 全POI取得
       else:
@@ -1103,6 +1024,7 @@ class Csv2redisClass():
         src = list(src.values())
 
       print(geoHash, "real Data:len", len(src), file=sys.stderr)
+
       for poidata in src:
         poi = poidata.decode().split(',', -1)
         lat = float(poi[latCol])
@@ -1111,21 +1033,29 @@ class Csv2redisClass():
           title = poi[titleCol]
         else:
           title = poi[0]
+        # print("titleCol :::::::", titleCol, "     title:", title, "   poi:", poi)
 
-        outStrL.append(" <use xlink:href='#p0' transform='ref(svg,{:.4f},{:.4f})'".format(
-            100 * math.floor(lng * 1000000) / 1000000, -100 * math.floor(lat * 1000000) / 1000000))
-        outStrL.append(" xlink:title='")
-        outStrL.append(self.xmlEscape(title))
-        outStrL.append("' x='0' y='0' content='")
-        outStrL.append(self.xmlEscape(self.getCsvStrExclLatLng(poi, latCol, lngCol)))
-        outStrL.append("'/>\n")
-    outStrL.append("</svg>\n")
+        if (self.customDataGenerator is None):
+          svgc.add_content(title, poi[latCol], poi[lngCol], self.getMetaExclLatLng(poi, latCol, lngCol))
+        else:
+          poiObj = {"lat": lat, "lng": lng, "title": title, "metadata": self.getMetaExclLatLng(poi, latCol, lngCol), "poi": poi}
+          outPoiL.append(poiObj)
+
+    # print(svgc.output_str_to_container())
 
     if (onMemoryOutput):  # 文字列として返却するだけのオプション
-      return "".join(outStrL)
+      # return "".join(outStrL)
+      if (self.customDataGenerator is None):
+        return svgc.output_str_to_container()
+      else:
+        return self.customDataGenerator.outputSvgContent(outPoiL, svgc, self.schemaObj)
     else:
       with open(self.targetDir + Csv2redisClass.svgFileNameHd + geoHash + ".svg", mode='w', encoding='utf-8') as f:
-        f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
+        # f.write("".join(outStrL))  # writeは遅いらしいので一発で書き出すようにするよ
+        if (self.customDataGenerator is None):
+          f.write(svgc.output_str_to_container())
+        else:
+          f.write(self.customDataGenerator.outputSvgContent(outPoiL, svgc, self.schemaObj))
         # f.flush() # ひとまずファイルの書き出しはシステムお任せにしましょう・・
 
   def xmlEscape(self, str):
@@ -1139,29 +1069,25 @@ class Csv2redisClass():
 
     self.ns = redisNs
 
-    #if (isinstance(self.r, redis.Redis)):
+    # if (isinstance(self.r, redis.Redis)):
     #  print("Skip redis gen")
     #  pass
-    #else:
+    # else:
     #  self.r = redis.Redis(host='localhost', port=6379, db=0)
-
-    # check the directory
-    if (not os.path.isdir(self.targetDir)):
-      os.mkdir(self.targetDir)
 
     if (len(self.schemaObj.get("schema")) == 0 or self.schemaObj.get("namespace") != self.ns):
       if self.r.exists(self.ns + "schema"):
         self.schemaObj = pickle.loads(self.r.get(self.ns + "schema"))
-        print("[[[INIT]]]   load schemaObj:", self.schemaObj, "  NS:", redisNs)
-        #schemaObj={
+        # print("[[[INIT]]]   load schemaObj:", self.schemaObj, "  NS:", redisNs)
+        # schemaObj={
         #  "schema" : schemaObj.get("schema"),
         #  "type" : schemaObj.get("type"),
         #  "latCol" : schemaObj.get("latCol"),
         #  "lngCol" : schemaObj.get("lngCol"),
         #  "titleCol": schemaObj.get("titleCol")
-        #}
+        # }
     else:
-      print("[[[INIT]]]    SKIP load schema : NS: ", redisNs, file=sys.stderr)
+      # print("[[[INIT]]]    SKIP load schema : NS: ", redisNs, file=sys.stderr)
       pass
 
   def getSchema(self, header):
@@ -1230,6 +1156,8 @@ class Csv2redisClass():
       # row[0]で必要な項目を取得することができる
       #     print(row)
       oneData = self.getOneData(row, latCol, lngCol)
+      if ( oneData is None):
+        continue
       self.registData(oneData, maxLevel)
       lines = lines + 1
       if (lines % 1000 == 0):
@@ -1245,6 +1173,8 @@ class Csv2redisClass():
       # row[0]で必要な項目を取得することができる
       #     print(row)
       oneData = self.getOneData(row, latCol, lngCol)
+      if ( oneData is None):
+        continue
       self.deleteData(oneData, maxLevel)
       lines = lines + 1
       if (lines % 1000 == 0):
@@ -1272,42 +1202,50 @@ class Csv2redisClass():
     except:
       return False
     return True
+  
+  @staticmethod
+  def getPoiKey(poiData,latCol,lngCol,csvSchemaType):
+    # poiDataは配列化済みのcsvデータ(文字列の配列)
+    # 簡単な整合性チェックを行っている
+    # 本来であれば、csvSchemaTypeに基づく各値の型チェックもすべき(TBD)
+    if ( len(poiData)!= len(csvSchemaType)):
+      return None
+    
+    try:
+      lat = float(poiData[latCol])
+      lng = float(poiData[lngCol])
+    except:
+      return None
+
+    if ( lat<-90 or lat >90 or lng <-180 or lng > 180):
+      return None
+
+    meta =[]
+    for i, data in enumerate(poiData):
+      if i!= latCol and i!= lngCol:
+        meta.append(data)
+
+    hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000)) + ":" + ",".join(meta)
+    ans = {"lat":lat,"lng":lng,"hkey":hkey}
+    return ans
 
   def getOneData(self, row, latCol, lngCol, idCol=-1):
-    csvSchema = self.schemaObj.get("schema")
+    csvSchemaType = self.schemaObj.get("type")
     # csv１行分の配列から、登録用のデータを構築する。ここで、データの整合性もチェックする
-    # Flaskによるウェブサービスではこの関数は使ってない(2019.5.14)
-    lat = float(row[latCol])
-    lng = float(row[lngCol])
-    meta = ""
-    dHkey = ""
+    # Flaskによるウェブサービスではこの関数は使ってない(2019.5.14)ISSUEがあったが、
+    # getPoiKey関数を共通で使うようにしたので整合性はほぼとれている(2023/3/27)
     for i, data in enumerate(row):
       if (self.validateData(data, i)):
-        meta += str(data)
-        if (i == latCol):
-          dHkey += str(math.floor(lat * 100000))
-        elif (i == lngCol):
-          dHkey += str(math.floor(lng * 100000))
-        else:
-          dHkey += str(data)
+        row[i] = str(data)
       else:
-        meta += "-"
-        dHkey += "-"
-      if i < len(csvSchema) - 1:
-        meta += ","
-        dHkey += ","
+        row[i]= "-"
 
-    # print("ParsedCsvData:",lat,lng,meta)
-    if (idCol != -1):
-      hkey = row[idCol]
-    elif (idCol == latCol or idCol == lngCol):  # idカラムに緯度化経度が明示された場合は、緯度:経度 それぞれ5桁目まででハッシュ(ID)とする
-      hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000))
-    else:
-      hkey = dHkey
+    oneData = Csv2redisClass.getPoiKey(row,latCol,lngCol,csvSchemaType)
+    if ( oneData is None):
+      return None
+    oneData["data"]=",".join(row)
 
     # print ("getOneData hkey:",hkey, file=sys.stderr)
-
-    oneData = {"lat": lat, "lng": lng, "data": meta, "hkey": hkey}  # hkeyで実データのハッシュを直に指定 2019/3/13
     # print("oneData:", oneData, " row:", row)
     return (oneData)
 
@@ -1337,11 +1275,40 @@ class Csv2redisClass():
     self.schemaObj = schemaData
     return (True)
 
-  def listSubLayers(self):
+  def listSubLayers(self, withSchema=False):
     #   global r
     # r = redis.Redis(host='localhost', port=6379, db=0)
     # print(self.r.hgetall("dataSet"))
-    return (self.r.hgetall("dataSet"))
+    bsl = self.r.hgetall("dataSet")
+    sl = {}
+    for key in bsl:
+      sl[key.decode()] = (bsl.get(key)).decode()
+    
+    if withSchema:
+      for slKey in sl:
+        slSchema = pickle.loads(self.r.get(slKey + "schema"))
+        sl[slKey]=slSchema
+    return (sl)
+
+  def regist_poi_size(self, _size: list):
+    # global poi_size
+    self.poi_size = _size
+
+  def regist_poi_color(self, _color: list):
+    # global poi_color
+    self.poi_color = _color
+
+  def regist_poi_index(self, _index: int):
+    # global poi_index
+    self.poi_index = _index
+
+  def poi_init(self, _size: list, _color: list, _index: int):
+    '''
+    POIの実データ生成時のイメージの登録
+    '''
+    self.regist_poi_size(_size)
+    self.regist_poi_color(_color)
+    self.regist_poi_index(_index)
 
 
 # END OF CLASS
@@ -1361,8 +1328,13 @@ def main():
   parser.add_argument("--debug", action='store_true')
   parser.add_argument("--saveallmap", action='store_true')
   parser.add_argument("--ns")
+  # 色分けに関するオプション追加 2019.06.05 Yutaka Sakiura
+  parser.add_argument("--imagecolumn")
+  parser.add_argument("--opacity")
+  parser.add_argument("--image")
+  parser.add_argument("--size")
 
-  dbns = "s2_"
+  dbns = "Hs2_"
 
   inputcsv = "./worldcitiespop_jp.csv"
   args = parser.parse_args()
