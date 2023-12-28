@@ -1,1 +1,1 @@
-python3 flaskMain.py --port 5000 --dbnumb 0
+python3 flaskmain.py --port 5000 --dbnumb 0
