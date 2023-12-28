@@ -99,7 +99,7 @@ class Csv2redisClass():
     self.deleteDataList = []
 
     # 色(アイコン種)分けに関するオプション用：デフォルトはいつも同じビットイメージアイコンを使う感じ 2019.8.23 s.takagi
-    self.poi_color = [{"flag": "f1", "color": "mappin.png"}]
+    self.poi_color = [{"flag": "f1", "color": "/svgmap/mappin.png"}]
     self.poi_index = None  # アイコン種を変化させるためのメタデータの番号(lat,lng除く)
     self.poi_size = ["-8", "-25", "19", "27"]  # x,y,width,height
 
