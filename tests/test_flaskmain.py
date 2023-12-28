@@ -23,6 +23,12 @@ class TestOfFlaskApps(unittest.TestCase):
     response = self.main.get("/dataset/show")
     self.assertEqual(response.status_code, 200)
 
+  def test_buildLayer(self):
+    postData = {'schema': ['title', 'metadata', 'latitude', 'longitude'], 'type': [2, 2, 1, 1], 'latCol': 2, 'lngCol': 3, 'titleCol': 0, 'idCol': -1, 'namespace': 'abcdefg_', 'name': 'sample', 'created': 1703751389604, 'defaultIcon': 8, 'defaultIconPath': 'pngs/pin_red_cross.png'}
+    response = self.main.post("/svgmap/buildLayer", data=json.dumps(postData), content_type='application/json')
+    self.assertEqual(response.status_code, 200)
+    response.close()
+
   def test_access2IndexFile(self):
     print("static index file ")
     response = self.main.get("/svgmap/index.html")
