@@ -1068,12 +1068,8 @@ class Csv2redisClass():
     # global r, schemaObj, ns
 
     self.ns = redisNs
-
-    # if (isinstance(self.r, redis.Redis)):
-    #  print("Skip redis gen")
-    #  pass
-    # else:
-    #  self.r = redis.Redis(host='localhost', port=6379, db=0)
+    if (not os.path.isdir(self.targetDir)):
+      os.mkdir(self.targetDir)
 
     if (len(self.schemaObj.get("schema")) == 0 or self.schemaObj.get("namespace") != self.ns):
       if self.r.exists(self.ns + "schema"):
