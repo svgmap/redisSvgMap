@@ -5,7 +5,7 @@ import json
 import sys
 import fakeredis
 from unittest import mock
-from csv2redis import Csv2redisClass
+from scripts.csv2redis import Csv2redisClass
 
 class TestOfCsv2Redis(unittest.TestCase):
   def setUp(self):
@@ -13,8 +13,8 @@ class TestOfCsv2Redis(unittest.TestCase):
 
     self.c2r = Csv2redisClass()
     self.c2r.set_connect(self.f_redis)
-    self.c2r.init("test_")
     self.c2r.targetDir = "tests/temporary/"
+    self.c2r.init("test_")
     # スキーマを準備 リーダーの作成はCsv２RedisClassに不要な関数（どっかのタイミングで削除したい）
     self.file = self.c2r.getCsvReader("./worldcitiespop_jp.csv")
     header = next(self.file)

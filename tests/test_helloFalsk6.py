@@ -4,7 +4,7 @@ import io
 import json
 import sys
 from unittest import mock
-from helloFlask6 import app
+from flaskMain import app
 
 class TestOfFlaskApps(unittest.TestCase):
   def setUp(self):

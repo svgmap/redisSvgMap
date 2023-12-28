@@ -4,7 +4,7 @@ import io
 import json
 import sys
 from unittest import mock
-from lib.svgmapContainer import Tag, SvgmapContainer
+from scripts.lib.svgmapContainer import Tag, SvgmapContainer
 
 class TestOfTagClass(unittest.TestCase):
   def test_normal(self):
@@ -49,7 +49,7 @@ class TestOfSvgmapContainerClass(unittest.TestCase):
     self.svgc.add_content("poi1", "35.000", "134", ["0", "poi1", "tokyo", "東京都新宿区", "f2"])
     
     self.assertEqual(self.svgc.output_str_to_container(), correct)
-    self.svgc.save_to_container_file("./tests/sample.svg")
-    with open("./tests/sample.svg", "r") as f:
+    self.svgc.save_to_container_file("./tests/temporary/sample.svg")
+    with open("./tests/temporary/sample.svg", "r") as f:
       data = f.read() 
     self.assertEqual(data, correct)
