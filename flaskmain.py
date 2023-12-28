@@ -320,7 +320,6 @@ def clearLock():
 def getMalTile(tileName="index.html", dsHash=dbnsDefault):
 
   print("Req. tileName:" + tileName, file=sys.stderr)
-
   if tileName == "":
     tileName = "index.html"
 
@@ -359,7 +358,10 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
     svgContent = csv2redis.saveSvgMapTileN(None, None, LowResImage, True)
     return Response(svgContent, mimetype='image/svg+xml')
   else:  # それ以外の場合は指定ディレクトリの静的ファイルを送る
-    return send_from_directory(SAVE_DIR, tileName)
+    if( dsHash == dbnsDefault): # デフォルトのまま=dsHash未指定と解釈
+      return send_from_directory(SAVE_DIR, tileName)
+    else:
+      return send_from_directory(SAVE_DIR+"/"+dsHash, tileName)
 
 
 if __name__ == "__main__":

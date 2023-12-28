@@ -24,6 +24,24 @@ class TestOfFlaskApps(unittest.TestCase):
     self.assertEqual(response.status_code, 200)
 
   def test_access2IndexFile(self):
+    print("static index file ")
     response = self.main.get("/svgmap/index.html")
+    self.assertEqual(response.status_code, 200)
+    response = self.main.get("/svgmap/")
+    self.assertEqual(response.status_code, 200)
+    response = self.main.get("/svgmap")
+    self.assertEqual(response.status_code, 200)
+    response.close()
+
+  def test_access2StaticImageFile(self):
+    response = self.main.get("/svgmap/pngs/pin_yellow.png")
+    self.assertEqual(response.status_code, 200)
+    response = self.main.get("/svgmap/gps.png")
+    self.assertEqual(response.status_code, 200)
+    response.close()
+
+
+  def test_access2LowResImageFile(self):
+    response = self.main.get("/svgmap/temporary/svgMapTileDB.svg")
     self.assertEqual(response.status_code, 200)
     response.close()
