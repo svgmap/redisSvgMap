@@ -51,5 +51,5 @@ class TestOfSvgmapContainerClass(unittest.TestCase):
     self.assertEqual(self.svgc.output_str_to_container(), correct)
     self.svgc.save_to_container_file("./tests/temporary/sample.svg")
     with open("./tests/temporary/sample.svg", "r") as f:
-      data = f.read() 
+      data = f.read()
     self.assertEqual(data, correct)
