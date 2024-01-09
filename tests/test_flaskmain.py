@@ -4,9 +4,11 @@ import io
 import json
 import sys
 from unittest import mock
-from flaskmain import app
+from flaskmain import app, getData
 from unittest.mock import MagicMock, patch
 
+import redis
+import pickle
 import scripts.csv2redis 
 
 class TestOfFlaskApps(unittest.TestCase):
@@ -65,10 +67,45 @@ class TestOfFlaskApps(unittest.TestCase):
   @patch("scripts.csv2redis.Csv2redisClass.__init__", autospec=True)
   def test_access2LowResImageFile(self, mock_c2rini, mock_c2rinit, mock_c2rsave):
     mock_c2rini.return_value = None
-    mock_c2rinit.return_value = None # mockの仕方がきれいじゃない
+    mock_c2rinit.return_value = None # 問答無用でNoneにしてmockしてしまっているので、Mockの仕方がきれいじゃない
     mock_c2rsave.return_value = ""
     with open("./flask/webApps/Container.svg", "r") as f:
       mock_c2rsave.return_value = f.read()
     response = self.main.get("/svgmap/temporary/svgMapTileDB.svg")
     self.assertEqual(response.status_code, 200)
     response.close()
+  
+  @patch("pickle.loads", autospec=True)
+  @patch("redis.Redis", autospec=True)
+  @patch("scripts.csv2redis.Csv2redisClass", autospec=True)
+  def test_editPost(self, mock_c2r, mock_redis, mock_pickle):
+    mock_redis.exists.return_value = True
+    schemaObj = {
+        'schema':['Name:s', 'latitude', 'longitude'],
+        'type': [0,1,1],
+        "latCol": 1,
+        "lngCol": 2,
+        "titleCol": 0,
+        "idCol": -1,
+        "namespace": "test_",
+        "name": "default"
+    }
+    
+    mock_pickle.return_value = schemaObj
+    postData = {"action": "ADD", "to": [{"latitude":36, "longitude":139, "metadata":"aaaaa,bbb"}]}
+    response = self.main.post("/svgmap/editPoint", data=json.dumps(postData), content_type='application/json')
+    self.assertEqual(response.status_code, 200)
+
+  def test_getData(self):
+    schemaObj = {
+        'schema':['Name:s', 'latitude', 'longitude'],
+        'type': [0,1,1],
+        "latCol": 1,
+        "lngCol": 2,
+        "titleCol": 0,
+        "idCol": -1,
+        "namespace": "test_",
+        "name": "default"
+    }
+    poiData = [{"latitude":36, "longitude":139, "metadata":"aaaaa,bbb"}]
+    print(getData(poiData, schemaObj))  # 何が正しい返り値か理解できてないため、未完成
