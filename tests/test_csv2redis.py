@@ -32,6 +32,16 @@ class TestOfCsv2Redis(unittest.TestCase):
     # Schemaが登録されているかの確認
     correctOfSchema = ['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e']
     correctOfType=[0, 2, 2, 0, 1, 1, 1, 1, 0]
+    self.assertEqual(self.c2r.schemaObj,{
+        'schema':['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e'],
+        'type': [0, 2, 2, 0, 1, 1, 1, 1, 0],
+        "latCol": 5,
+        "lngCol": 6,
+        "titleCol": 1,
+        "idCol": -1,
+        "namespace": "test_",
+        "name": "default"
+    })
     self.assertEqual(self.c2r.schemaObj.get("schema"), correctOfSchema)
     self.assertEqual(self.c2r.schemaObj.get("type"), correctOfType)
 
