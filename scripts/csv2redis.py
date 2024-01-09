@@ -10,8 +10,10 @@ from PIL import Image
 import math
 import numpy as np
 import os
-from scripts.lib.svgmapContainer import SvgmapContainer, Tag
 import hashlib
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # 実行時のカレントパスを追加
+from scripts.lib.svgmapContainer import SvgmapContainer, Tag
 
 # csvを読み込み、redis上に、quadtreeのタイル番号をハッシュキーとした非等分quadtreeデータ構造を構築する
 # Programmed by Satoru Takagi

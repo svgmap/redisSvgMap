@@ -34,7 +34,7 @@ import math
 from collections import OrderedDict
 import threading
 import argparse
-from scripts.csv2redis import Csv2redisClass  # 上で上のディレクトリをappendしてるのでimportできる
+from scripts.csv2redis import Csv2redisClass
 
 app = Flask(__name__)
 CORS(app)
