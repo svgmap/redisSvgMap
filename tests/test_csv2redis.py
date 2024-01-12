@@ -5,6 +5,7 @@ import json
 import sys
 import fakeredis
 from unittest import mock
+from unittest.mock import MagicMock, patch
 from scripts.csv2redis import Csv2redisClass
 
 class TestOfCsv2Redis(unittest.TestCase):
@@ -64,7 +65,6 @@ class TestOfCsv2Redis(unittest.TestCase):
     latCol = self.c2r.schemaObj.get("latCol")
     lngCol = self.c2r.schemaObj.get("lngCol")
     self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)
-    print('>>>>>>>')
     self.c2r.buildAllLowResMap()
 
   def test_saveAllSvgMap(self):
@@ -101,7 +101,6 @@ class TestOfCsv2Redis(unittest.TestCase):
     # デフォルト：データをすべて使用してハッシュキー（ユニークキー）を生成するパターン
     data = ['jp','a','A','47','','26.606111','127.923889','26.606111','okinawa']
     result = self.c2r.getOneData(data, 5, 6)  # 5:lat, 6:lng
-    print(result)
     correct = {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa', 'hkey': '2660611:12792388:jp,a,A,47,-,26.606111,okinawa'}
     self.assertDictEqual(result, correct)
     # HashKeyを指定するパターン
@@ -116,3 +115,19 @@ class TestOfCsv2Redis(unittest.TestCase):
     correct = {'lat': 26.606111, 'lng': 127.923889, 'hkey': '2660611:12792388:jp,a,A,47,,26.606111,okinawa'}
 
     self.assertEqual(result, correct)
+
+  @patch("pickle.loads", MagicMock(side_effect=Exception()))
+  def test_saveSvgMapTileN_throwException(self):
+    self.c2r.schemaObj = {
+        'schema':['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e'],
+        'type': [0, 2, 2, 0, 1, 1, 1, 1, 0],
+        "latCol": 5,
+        "lngCol": 6,
+        "titleCol": 1,
+        "idCol": -1,
+        "namespace": "test_",
+        "name": "default"
+    }
+    # pickle.loadsでエラー出たとしても返す値がないため上位でエラー処理する必要あり
+    # そのためこのファイルでは試験の正常性判定してません。
+    result = self.c2r.saveSvgMapTileN(geoHash=None, dtype=None, lowResImage=False, onMemoryOutput=True)  # 5:lat, 6:lng

@@ -347,16 +347,28 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
     if geoHash == None:
       geoHash = "D"
     if tileName.endswith(".svg"):
-      svgContent = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True)
-      return Response(svgContent, mimetype='image/svg+xml')
+      try:
+        svgContent = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True)
+        return Response(svgContent, mimetype='image/svg+xml')
+      except:
+        del csv2redis
+        return Response("TileGeneratedError", mimetype='text')
     else:  # PNG
-      pngByteIo = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True, True)
-      return send_file(pngByteIo, mimetype='image/png')
+      try:
+        pngByteIo = csv2redis.saveSvgMapTileN(geoHash, None, LowResImage, True, True)
+        return send_file(pngByteIo, mimetype='image/png')
+      except:
+        del csv2redis
+        return Response("ImageOfTileGeneratedError", mimetype='text')
   elif tileName.startswith("svgMap") and tileName.endswith(".svg"):  # for root svg content
-    csv2redis = Csv2redisClass(redisDBNumber)
-    csv2redis.init(dsHash)
-    svgContent = csv2redis.saveSvgMapTileN(None, None, LowResImage, True)
-    return Response(svgContent, mimetype='image/svg+xml')
+    try:
+      csv2redis = Csv2redisClass(redisDBNumber)
+      csv2redis.init(dsHash)
+      svgContent = csv2redis.saveSvgMapTileN(None, None, LowResImage, True)
+      return Response(svgContent, mimetype='image/svg+xml')
+    except:
+        del csv2redis
+        return Response("RootFileGeneratedError", mimetype='text')
   else:  # それ以外の場合は指定ディレクトリの静的ファイルを送る
     if( dsHash == dbnsDefault): # デフォルトのまま=dsHash未指定と解釈
       return send_from_directory(SAVE_DIR, tileName)
