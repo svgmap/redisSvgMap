@@ -121,3 +121,25 @@ class TestOfFlaskApps(unittest.TestCase):
     response = self.main.get("/svgmap/temporary/svgMapRoot.svg")
     self.assertEqual(response.status_code, 200)
     self.assertEqual(response.data, b"RootFileGeneratedError")
+
+  @patch("flaskmain.getData", return_value=[{"lat":36, "lng":139, "hkey":"aaaaa,bbb,ccc", "data": "aaaaa,bbb,ccc"}])
+  @patch("flaskmain.Csv2redisClass", autospec = True)
+  def test_mockredisThread(self, mock_c2r, flask_getData):      
+    mock_c2r.return_value.getSchemaObject.return_value = {
+        'schema':['Name:s', 'latitude', 'longitude'],
+        'type': [0,1,1],
+        "latCol": 1,
+        "lngCol": 2,
+        "titleCol": 0,
+        "idCol": -1,
+        "namespace": "test_",
+        "name": "default"
+    }
+    mock_c2r.return_value.getMaxLevel.return_value = 10
+    mock_c2r.return_value.registData.return_value = {"keys":"D"}
+    mock_c2r.return_value.flushRegistData.return_value = {"keys":"D"}
+    rThread = redisRegistThread(dsHash="s1_")
+    rThread.jsStr = json.dumps({"action": "ADD", "to": [{"latitude":36, "longitude":139, "metadata":"aaaaa,bbb,ccc"}]})
+    rThread.start()
+    rThread.join()
+    mock_c2r.return_value.registData.assert_called_with({'lat': 36, 'lng': 139, 'hkey': 'aaaaa,bbb,ccc', 'data': 'aaaaa,bbb,ccc'}, 10)

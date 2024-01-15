@@ -130,6 +130,12 @@ class Csv2redisClass():
   def set_connect(self, connector): # unittest用のコネクタ差し替え関数
     self.r = connector
 
+  def getSchemaObject(self) -> dict:
+    return self.schemaObj
+
+  def getMaxLevel(self) -> int:
+    return self.maxLevel
+
   def registLrMap(self, lrMap, xyKey, splitedData):
     # 低解像度統計データを構築・登録する
     # splitedData: 登録しようとしているデータ

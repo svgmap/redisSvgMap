@@ -91,7 +91,7 @@ class redisRegistThread(threading.Thread):
     self.dbns = dsHash
     self.csv2redis = Csv2redisClass(redisDBNumber)
     self.csv2redis.init(self.dbns)
-    self.schemaObj = self.csv2redis.schemaObj
+    self.schemaObj = self.csv2redis.getSchemaObject()
 
   def stop(self):
     self.stop_event.set()
@@ -109,20 +109,20 @@ class redisRegistThread(threading.Thread):
       changeToPois = getData(jsData["to"], self.schemaObj)
       count = 0
       for originPoi in originPois:
-        ret = self.csv2redis.deleteData((originPoi), self.csv2redis.maxLevel)
+        ret = self.csv2redis.deleteData((originPoi), self.csv2redis.getMaxLevel())
         geoHashes.update(ret["keys"])
         self.progress = "S1_" + str(count) + "/" + str(len(originPois))
         count = count + 1
-      ret = self.csv2redis.flushDeleteData(self.csv2redis.maxLevel)
+      ret = self.csv2redis.flushDeleteData(self.csv2redis.getMaxLevel())
       geoHashes.update(ret["keys"])
       print("Step1 DELETE: end : geoHashes:", geoHashes, file=sys.stderr)
       count = 0
       for changeToPoi in changeToPois:
-        ret = self.csv2redis.registData((changeToPoi), self.csv2redis.maxLevel)
+        ret = self.csv2redis.registData((changeToPoi), self.csv2redis.getMaxLevel())
         geoHashes.update(ret["keys"])
         self.progress = "S2_" + str(count) + "/" + str(len(changeToPois))
         count = count + 1
-      ret = self.csv2redis.flushRegistData(self.csv2redis.maxLevel)
+      ret = self.csv2redis.flushRegistData(self.csv2redis.getMaxLevel())
       geoHashes.update(ret["keys"])
       print("Step2 ADD: end : geoHashes:", geoHashes, file=sys.stderr)
 
@@ -132,11 +132,11 @@ class redisRegistThread(threading.Thread):
       # print("addPois:", addPois, "   jsData:", jsData)
       count = 0
       for addPoi in addPois:
-        ret = self.csv2redis.registData((addPoi), self.csv2redis.maxLevel)
+        ret = self.csv2redis.registData((addPoi), self.csv2redis.getMaxLevel())
         geoHashes.update(ret["keys"])
         self.progress = "S1_" + str(count) + "/" + str(len(addPois))
         count = count + 1
-      ret = self.csv2redis.flushRegistData(self.csv2redis.maxLevel)
+      ret = self.csv2redis.flushRegistData(self.csv2redis.getMaxLevel())
       print("registKeys:", ret)
       geoHashes.update(ret["keys"])
       print("ADD: update lrmap")
@@ -146,11 +146,11 @@ class redisRegistThread(threading.Thread):
       print("DELETE: start : dbns: ", self.dbns, delPois, file=sys.stderr)
       count = 0
       for delPoi in delPois:
-        ret = self.csv2redis.deleteData((delPoi), self.csv2redis.maxLevel)
+        ret = self.csv2redis.deleteData((delPoi), self.csv2redis.getMaxLevel())
         geoHashes.update(ret["keys"])
         self.progress = "S1_" + str(count) + "/" + str(len(delPois))
         count = count + 1
-      ret = self.csv2redis.flushDeleteData(self.csv2redis.maxLevel)
+      ret = self.csv2redis.flushDeleteData(self.csv2redis.getMaxLevel())
       geoHashes.update(ret["keys"])
       print("DELETE: update lrmap")
       print("DELETE: end : geoHashes:", geoHashes, file=sys.stderr)
