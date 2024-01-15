@@ -4,12 +4,10 @@ import io
 import json
 import sys
 from unittest import mock
-from flaskmain import app, getData
+from flaskmain import app, getData, redisRegistThread
 from unittest.mock import MagicMock, patch
-
 import redis
 import pickle
-import scripts.csv2redis 
 
 class TestOfFlaskApps(unittest.TestCase):
   def setUp(self):
@@ -110,12 +108,9 @@ class TestOfFlaskApps(unittest.TestCase):
     poiData = [{"latitude":36, "longitude":139, "metadata":"aaaaa,bbb"}]
     print(getData(poiData, schemaObj))  # 何が正しい返り値か理解できてないため、未完成
 
-  @patch("pickle.loads", autospec=True)
-  @patch("redis.Redis", autospec=True)
-  @patch("scripts.csv2redis.Csv2redisClass.init", autospec=True)
-  @patch("scripts.csv2redis.Csv2redisClass.__init__", autospec=True)
-  def test_access2svgFile_throwException(self, mock_c2r__init__, mock_c2r_init, mock_redis, mock_pickle):
-    mock_c2r__init__.return_value = None
+  @patch("flaskmain.Csv2redisClass", autospec = True)
+  def test_access2svgFile_throwException(self, mock_c2r):
+    mock_c2r.return_value.saveSvgMapTileN.side_effect = Exception("saveSvgMapTileNException")
     # saveSvgMapTileN関数でExceptionを発生させる
     response = self.main.get("/svgmap/temporary/svgMapTileDB.svg")
     self.assertEqual(response.status_code, 200)
