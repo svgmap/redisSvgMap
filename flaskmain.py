@@ -45,7 +45,7 @@ redisDBNumber = 0
 
 generalHkey = True  # 個々のデータを投入するhmapのkey(これはgeoHashではなく、その下の個々のデータを入れる入れ物のハッシュキー(なのでどうでもいいといえばどうでもいい))をどうするか
 
-SAVE_DIR = "flask/webApps"
+SAVE_DIR = "./webApps"
 
 # LowResImage = False  # 小縮尺タイルをrectVectorではなくPNGビットイメージにする場合はTrueに
 LowResImage = False

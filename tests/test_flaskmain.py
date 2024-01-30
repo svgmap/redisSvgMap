@@ -64,7 +64,7 @@ class TestOfFlaskApps(unittest.TestCase):
 
   @patch("flaskmain.Csv2redisClass", autospec = True)
   def test_access2LowResImageFile(self, mock_c2r):
-    with open("./flask/webApps/Container.svg", "r") as f:
+    with open("./webApps/Container.svg", "r") as f:
       mock_c2r.return_value.saveSvgMapTileN.return_value = f.read()
     response = self.main.get("/svgmap/temporary/svgMapTileDB.svg")
     self.assertEqual(response.status_code, 200)

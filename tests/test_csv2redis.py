@@ -14,7 +14,7 @@ class TestOfCsv2Redis(unittest.TestCase):
 
     self.c2r = Csv2redisClass()
     self.c2r.set_connect(self.f_redis)
-    self.c2r.targetDir = "flask/webApps/temporary/"
+    self.c2r.targetDir = "webApps/temporary/"
     self.c2r.init("test_")
     # スキーマを準備 リーダーの作成はCsv２RedisClassに不要な関数（どっかのタイミングで削除したい）
     self.file = self.c2r.getCsvReader("./worldcitiespop_jp.csv")
