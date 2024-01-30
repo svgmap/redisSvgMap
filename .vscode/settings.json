@@ -6,7 +6,6 @@
     "editor.wordWrapColumn": 120,
     "editor.wrappingIndent": "same",
     "editor.renderWhitespace": "boundary",
-    "workbench.colorTheme": "Default Light+",
     "editor.formatOnType": true,
     "editor.formatOnPaste": true,
     "editor.formatOnSave": true,

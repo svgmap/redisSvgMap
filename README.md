@@ -7,12 +7,20 @@ Unlike [SVGMapTools](https://github.com/svgmap/svgMapTools/), this software prov
 ## Dev Env
 Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 
+``pip3 install -r requirements.txt``
+``pip3 install -r requirements-dev.txt``
+
 ## Tests
+
+### Unit test
+
+``python3 -m unittest discover tests``
+
 ### Regist test
-``python3 csv2redis17.py``
+``python3 scripts/csv2redis.py``
 
 ### Delete test
-``python3 csv2redis17.py --delete worldcitiespopDelTest_jp.csv``
+``python3 scripts/csv2redis.py --delete worldcitiespopDelTest_jp.csv``
 *Erase all records except gaaja*
 
 ## Web Service
