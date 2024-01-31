@@ -16,6 +16,14 @@ Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 
 ``python3 -m unittest discover tests``
 
+### display coverage
+
+``coverage run -m unittest discover tests ; coverage report``
+
+### export coverage report to html file
+
+``coverage html``
+
 ### Regist test
 ``python3 scripts/csv2redis.py``
 
