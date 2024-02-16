@@ -34,6 +34,7 @@ import math
 from collections import OrderedDict
 import threading
 import argparse
+from scripts.lib.customDataMapper import DefaultDataGenerator
 from scripts.csv2redis import Csv2redisClass
 
 app = Flask(__name__)
@@ -340,7 +341,7 @@ def getMalTile(tileName="index.html", dsHash=dbnsDefault):
     # print("tileName:" + tileName, file=sys.stderr)
 
     csv2redis = Csv2redisClass(redisDBNumber)
-
+    csv2redis.customDataGenerator = DefaultDataGenerator()
     csv2redis.init(dsHash)
     # print(csv2redis.csvSchema, file=sys.stderr)
     # print(csv2redis.csvSchemaType, file=sys.stderr)
