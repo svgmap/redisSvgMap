@@ -8,6 +8,7 @@ Unlike [SVGMapTools](https://github.com/svgmap/svgMapTools/), this software prov
 Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 
 ``pip3 install -r requirements.txt``
+
 ``pip3 install -r requirements-dev.txt``
 
 ## Tests
@@ -18,7 +19,7 @@ Python3 and Redis (and pip3 install redis hiredis numpy pillow flask)
 
 ### display coverage
 
-``coverage run -m unittest discover tests ; coverage report``
+``coverage run -m unittest discover tests ; coverage report; coverage html``
 
 ### export coverage report to html file
 
