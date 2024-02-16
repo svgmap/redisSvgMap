@@ -29,7 +29,7 @@ class TestOfFlaskApps(unittest.TestCase):
   @patch("flaskmain.Csv2redisClass", autospec = True)
   def test_buildLayer(self,mock_c2r):
     mock_c2r.return_value.registSchema.return_value = True
-    postData = {'schema': ['title', 'metadata', 'latitude', 'longitude'], 'type': [2, 2, 1, 1], 'latCol': 2, 'lngCol': 3, 'titleCol': 0, 'idCol': -1, 'namespace': 'abcdefg_', 'name': 'sample', 'created': 1703751389604, 'defaultIcon': 8, 'defaultIconPath': 'pngs/pin_red_cross.png'}
+    postData = {'schema': ['title', 'metadata', 'latitude', 'longitude'], 'type': [2, 2, 1, 1], 'latCol': 2, 'lngCol': 3, 'titleCol': 0, 'idCol': -1, 'namespace': 'abcdefg_', 'name': 'sample', 'created': 1703751389604, 'defaultIcon': 8, 'defaultIconPath': 'data:image/png;base64,XXX....XXXX'}
     response = self.main.post("/svgmap/buildLayer", data=json.dumps(postData), content_type='application/json')
     self.assertEqual(response.status_code, 200)
     self.assertEqual(response.data, b"OK")
@@ -64,7 +64,7 @@ class TestOfFlaskApps(unittest.TestCase):
 
   @patch("flaskmain.Csv2redisClass", autospec = True)
   def test_access2LowResImageFile(self, mock_c2r):
-    with open("./flask/webApps/Container.svg", "r") as f:
+    with open("./webApps/Container.svg", "r") as f:
       mock_c2r.return_value.saveSvgMapTileN.return_value = f.read()
     response = self.main.get("/svgmap/temporary/svgMapTileDB.svg")
     self.assertEqual(response.status_code, 200)

@@ -6,6 +6,7 @@ import sys
 import fakeredis
 from unittest import mock
 from unittest.mock import MagicMock, patch
+from scripts.lib.customDataMapper import DefaultDataGenerator
 from scripts.csv2redis import Csv2redisClass
 
 class TestOfCsv2Redis(unittest.TestCase):
@@ -13,8 +14,9 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.f_redis = fakeredis.FakeStrictRedis(version=6)
 
     self.c2r = Csv2redisClass()
+    self.c2r.customDataGenerator = DefaultDataGenerator()
     self.c2r.set_connect(self.f_redis)
-    self.c2r.targetDir = "flask/webApps/temporary/"
+    self.c2r.targetDir = "webApps/temporary/"
     self.c2r.init("test_")
     # スキーマを準備 リーダーの作成はCsv２RedisClassに不要な関数（どっかのタイミングで削除したい）
     self.file = self.c2r.getCsvReader("./worldcitiespop_jp.csv")
@@ -105,6 +107,8 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.assertDictEqual(result, correct)
     # HashKeyを指定するパターン
     result = self.c2r.getOneData(data, 5, 6, 8)  # 5:lat, 6:lng
+    print(">>>>>>>>>>>>>>>>>>>")
+    print(result)
     self.assertDictEqual(result, correct)
 
   def test_getPoiKey(self):
@@ -131,3 +135,29 @@ class TestOfCsv2Redis(unittest.TestCase):
     # pickle.loadsでエラー出たとしても返す値がないため上位でエラー処理する必要あり
     # そのためこのファイルでは試験の正常性判定してません。
     result = self.c2r.saveSvgMapTileN(geoHash=None, dtype=None, lowResImage=False, onMemoryOutput=True)  # 5:lat, 6:lng
+
+  def test_saveSvgMapTileN(self):
+    # load data
+    # この部分はもう少しスマートにしたい
+    latCol = self.c2r.schemaObj.get("latCol")
+    lngCol = self.c2r.schemaObj.get("lngCol")
+    self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)
+
+    self.c2r.schemaObj = {
+        'schema':['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e'],
+        'type': [0, 2, 2, 0, 1, 1, 1, 1, 0],
+        "latCol": 5,
+        "lngCol": 6,
+        "titleCol": 1,
+        "idCol": -1,
+        "namespace": "test_",
+        "name": "default"
+    }
+    result = self.c2r.saveSvgMapTileN(geoHash=None, dtype=None, lowResImage=False, onMemoryOutput=True)  # 5:lat, 6:lng
+    print(result)
+    self.assertEqual(len(result.split("\n")), 12)
+    
+    result = self.c2r.saveSvgMapTileN(geoHash="DBBCCAABA", dtype=None, lowResImage=False, onMemoryOutput=True)  # 5:lat, 6:lng
+    self.assertEqual(len(result.split("\n")), 79)
+    
+  
