@@ -9,11 +9,12 @@ from unittest.mock import MagicMock, patch
 from scripts.csv2redis import Csv2redisClass
 
 class TestOfCsv2Redis(unittest.TestCase):
-  def setUp(self):
-    self.f_redis = fakeredis.FakeStrictRedis(version=6)
+  mk_fakeredis = fakeredis.FakeStrictRedis()
+
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def setUp(self, mock_redis):
 
     self.c2r = Csv2redisClass()
-    self.c2r.set_connect(self.f_redis)
     self.c2r.targetDir = "flask/webApps/temporary/"
     self.c2r.init("test_")
     # スキーマを準備 リーダーの作成はCsv２RedisClassに不要な関数（どっかのタイミングで削除したい）
@@ -25,11 +26,11 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.c2r.registSchema(self.csvSchemaObj)
 
   def tearDown(self):
-    self.f_redis.close()
+    self.mk_fakeredis.flushall()
     self.c2r.closeCsvReader()
-    pass
 
-  def test_displaySchemaObj(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_displaySchemaObj(self, mock_redis):
     # Schemaが登録されているかの確認
     correctOfSchema = ['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e']
     correctOfType=[0, 2, 2, 0, 1, 1, 1, 1, 0]
@@ -46,28 +47,31 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.assertEqual(self.c2r.schemaObj.get("schema"), correctOfSchema)
     self.assertEqual(self.c2r.schemaObj.get("type"), correctOfType)
 
-  def test_readAndRegistData(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_readAndRegistData(self, mock_redis):
     # CSVファイルを読み込みデータをredisに登録する
     latCol = self.c2r.schemaObj.get("latCol")
     lngCol = self.c2r.schemaObj.get("lngCol")
     self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)
-    result = self.f_redis.hgetall('test_DBADBADADBA')
+    result = self.mk_fakeredis.hgetall('test_DBADBADADBA')
     #print(self.f_redis.hgetall('test_DBADBADADBA'))
     # TODO 登録後のデータ正常性がまだ未確認
     #print(result[b'jp,aragachi,Aragachi,47,-,2611777,12769111,26.117778,okinawa,'])
-    self.assertEqual(len(self.f_redis.keys("test_*")), 137)
+    self.assertEqual(len(self.mk_fakeredis.keys("test_*")), 137)
     # ハッシュキーを作成する際getOneData関数で緯度経度を丸めてます
     print(result)
     self.assertEqual(result[b"2611777:12769111:jp,aragachi,Aragachi,47,-,26.117778,okinawa"].decode("UTF-8"), "jp,aragachi,Aragachi,47,-,26.117778,127.691111,26.117778,okinawa")
   
-  def test_buildMapData(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_buildMapData(self, mock_redis):
     # TODO テスト内容はこれから
     latCol = self.c2r.schemaObj.get("latCol")
     lngCol = self.c2r.schemaObj.get("lngCol")
     self.c2r.readAndRegistData(self.file, latCol, lngCol, 16)
     self.c2r.buildAllLowResMap()
 
-  def test_saveAllSvgMap(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_saveAllSvgMap(self, mock_redis):
     # TODO テスト内容はこれから
     latCol = self.c2r.schemaObj.get("latCol")
     lngCol = self.c2r.schemaObj.get("lngCol")
@@ -75,29 +79,34 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.c2r.buildAllLowResMap() # POIが上限あふれたラスターデータの出力
     self.c2r.saveAllSvgMap(True) # ベクトルデータ出力
 
-  def test_getGeoHashCode(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_getGeoHashCode(self, mock_redis):
     self.assertEqual(self.c2r.getGeoHashCode(130, 39, 130.01, 42, 0.1, 0.1), ('A', 130.01, 42, 0.05, 0.05))
     
-  def test_registData(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_registData(self, mock_redis):
     # self.c2r.burstSize = 3
     correct =  {"success": -1, "keys": []}
     data_case = [{'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,,26.606111,127.923889,26.606111,okinawa', 'hkey': 'jp,a,A,47,,2660611,12792388,26.606111,okinawa'}]
     result = self.c2r.registData(data_case, 3)
     self.assertEqual(result, correct)
+  
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_burstRegistData(self, mock_redis):
     
     data_case = [
-      {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa,'},
-      {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa,'},
-      {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa,'},
-      {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa,', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa,'},
+      {'lat': 26.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,26.606111,127.923889,26.606111,okinawa', 'hkey': 'jp,a,A,47,-,2660611,12792388,26.606111,okinawa'},
+      {'lat': 27.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,27.606111,127.923889,26.606111,okinawa', 'hkey': 'jp,a,A,47,-,2760611,12792388,26.606111,okinawa'},
+      {'lat': 28.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,28.606111,127.923889,26.606111,okinawa', 'hkey': 'jp,a,A,47,-,2860611,12792388,26.606111,okinawa'},
+      {'lat': 29.606111, 'lng': 127.923889, 'data': 'jp,a,A,47,-,29.606111,127.923889,26.606111,okinawa', 'hkey': 'jp,a,A,47,-,2960611,12792388,26.606111,okinawa'},
     ]
     result = self.c2r.burstRegistData(data_case, 3)
     correct = {'keys': ['D', 'D', 'D', 'D'], 'success': 4}
     self.assertEqual(result, correct)
-
-    #self.assertEqual(self.f_redis.get("test_D"),"string")
+    self.assertEqual(self.mk_fakeredis.type("test_D"), b"hash")
     
-  def test_getOneData(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_getOneData(self, mock_redis):
     # デフォルト：データをすべて使用してハッシュキー（ユニークキー）を生成するパターン
     data = ['jp','a','A','47','','26.606111','127.923889','26.606111','okinawa']
     result = self.c2r.getOneData(data, 5, 6)  # 5:lat, 6:lng
@@ -107,7 +116,8 @@ class TestOfCsv2Redis(unittest.TestCase):
     result = self.c2r.getOneData(data, 5, 6, 8)  # 5:lat, 6:lng
     self.assertDictEqual(result, correct)
 
-  def test_getPoiKey(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_getPoiKey(self, mock_redis):
      # デフォルト：データをすべて使用してハッシュキー（ユニークキー）を生成するパターン
     data = ['jp','a','A','47','','26.606111','127.923889','26.606111','okinawa']
     schema = [0, 2, 2, 0, 1, 1, 1, 1, 0]
@@ -117,7 +127,8 @@ class TestOfCsv2Redis(unittest.TestCase):
     self.assertEqual(result, correct)
 
   @patch("pickle.loads", MagicMock(side_effect=Exception()))
-  def test_saveSvgMapTileN_throwException(self):
+  @patch("redis.Redis", return_value=mk_fakeredis)
+  def test_saveSvgMapTileN_throwException(self, mock_redis):
     self.c2r.schemaObj = {
         'schema':['Country:e', 'Name:s', 'AccentCity:s', 'Region:e', 'Population:n', 'latitude', 'longitude', 'Test3:n', 'Prefecture:e'],
         'type': [0, 2, 2, 0, 1, 1, 1, 1, 0],

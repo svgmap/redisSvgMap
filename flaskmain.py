@@ -104,32 +104,27 @@ class redisRegistThread(threading.Thread):
     geoHashes = set()
     #    self.csv2redis.init(self.dbns)
     if jsData["action"] == "MODIFY":
+      # 更新は一括削除して一括登録するとNGだった場合戻せないため、個別に削除して登録する
       print("MODIFY: start : dbNamespace:", self.dbns, file=sys.stderr)
-      originPois = getData(jsData["from"], self.schemaObj)
-      changeToPois = getData(jsData["to"], self.schemaObj)
       count = 0
-      for originPoi in originPois:
-        ret = self.csv2redis.deleteData((originPoi), self.csv2redis.getMaxLevel())
+      for (modifyFrom, modifyTo) in zip(getData(jsData["from"], self.schemaObj), getData(jsData["to"], self.schemaObj)):
+        print("modifyPoi:", modifyFrom, modifyTo)
+        fromDataKey = Csv2redisClass.getPoiKey(modifyFrom["data"].split(","), self.schemaObj["latCol"], self.schemaObj["lngCol"], self.schemaObj["type"])
+        self.csv2redis.deleteData((modifyFrom), self.csv2redis.getMaxLevel())
+        ret = self.csv2redis.flushDeleteData(self.csv2redis.getMaxLevel())
         geoHashes.update(ret["keys"])
-        self.progress = "S1_" + str(count) + "/" + str(len(originPois))
-        count = count + 1
-      ret = self.csv2redis.flushDeleteData(self.csv2redis.getMaxLevel())
-      geoHashes.update(ret["keys"])
-      print("Step1 DELETE: end : geoHashes:", geoHashes, file=sys.stderr)
-      count = 0
-      for changeToPoi in changeToPois:
-        ret = self.csv2redis.registData((changeToPoi), self.csv2redis.getMaxLevel())
+        print("delete failed?", ret)
+        if ret["success"][0] != 1: # ret.successは削除成功件数が入る
+          print("Delete failed:", modifyFrom)
+          continue
+        self.csv2redis.registData((modifyTo), self.csv2redis.getMaxLevel())
+        ret = self.csv2redis.flushRegistData(self.csv2redis.getMaxLevel())
         geoHashes.update(ret["keys"])
-        self.progress = "S2_" + str(count) + "/" + str(len(changeToPois))
+        self.progress = "S1_" + str(count) + "/" + str(len(jsData["from"]))
         count = count + 1
-      ret = self.csv2redis.flushRegistData(self.csv2redis.getMaxLevel())
-      geoHashes.update(ret["keys"])
-      print("Step2 ADD: end : geoHashes:", geoHashes, file=sys.stderr)
-
     elif jsData["action"] == "ADD":
       addPois = getData(jsData["to"], self.schemaObj)
       print("ADD: start : dbns: ", self.dbns, file=sys.stderr)
-      # print("addPois:", addPois, "   jsData:", jsData)
       count = 0
       for addPoi in addPois:
         ret = self.csv2redis.registData((addPoi), self.csv2redis.getMaxLevel())
