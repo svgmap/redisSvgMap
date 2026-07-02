@@ -120,6 +120,18 @@ class TestOfCsv2Redis(unittest.TestCase):
 
     self.assertEqual(result, correct)
 
+  def test_rounding_error_patterns(self):
+    schema = [0, 2, 2, 0, 1, 1, 1, 1, 0]
+    # 33.12（5桁未満）で丸め誤差（3312000ではなく3311999になる）のケース
+    data = ['jp','a','A','47','','33.12','139.76712','33.12','okinawa']
+    result = self.c2r.getPoiKey(data, 5, 6, schema)
+    self.assertTrue(result['hkey'].startswith('3312000:13976712:'))
+    
+    # 32.00017（5桁）で丸め誤差（3200017ではなく3200016になる）のケース
+    data = ['jp','a','A','47','','32.00017','139.76712','32.00017','okinawa']
+    result = self.c2r.getPoiKey(data, 5, 6, schema)
+    self.assertTrue(result['hkey'].startswith('3200017:13976712:'))
+    
   @patch("pickle.loads", MagicMock(side_effect=Exception()))
   def test_saveSvgMapTileN_throwException(self):
     self.c2r.schemaObj = {
