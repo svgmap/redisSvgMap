@@ -4,6 +4,7 @@
 
 import sys
 from io import BytesIO
+from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_EVEN
 import csv
 import codecs
 from xml.dom import minidom
@@ -1233,7 +1234,7 @@ class Csv2redisClass():
       if i!= latCol and i!= lngCol:
         meta.append(data)
 
-    hkey = str(math.floor(lat * 100000)) + ":" + str(math.floor(lng * 100000)) + ":" + ",".join(meta)
+    hkey = str(int(Decimal(lat * 100000).quantize(Decimal('0.1')))) + ":" + str(int(Decimal(lng * 100000).quantize(Decimal('0.1')))) + ":" + ",".join(meta)
     ans = {"lat":lat,"lng":lng,"hkey":hkey}
     return ans
 
